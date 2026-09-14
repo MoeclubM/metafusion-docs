@@ -33,6 +33,7 @@ export default defineConfig({
         text: '📖 平台使用指南',
         items: [
           { text: '平台概览', link: '/overview' },
+          { text: '设计理念', link: '/philosophy' },
           { text: '快速上手指南', link: '/quickstart' },
           { text: '社区讨论与交流', link: '/community-guide' }
         ]
