@@ -1,4 +1,7 @@
 node_modules/
+# VitePress 构建产物与缓存（内容在 docs/ 下，两个路径都要忽略）
 .vitepress/dist/
 .vitepress/cache/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 .DS_Store

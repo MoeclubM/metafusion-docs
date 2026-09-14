@@ -1,1 +1,0 @@
-import{_ as s,o as i,c as t,a2 as a}from"./chunks/framework.Buc7gXeZ.js";const k=JSON.parse('{"title":"元数据目录核心架构","description":"","frontmatter":{},"headers":[],"relativePath":"catalog.md","filePath":"catalog.md"}'),o={name:"catalog.md"};function d(n,e,c,l,r,p){return i(),t("div",null,[...e[0]||(e[0]=[a("",35)])])}const E=s(o,[["render",d]]);export{k as __pageData,E as default};
