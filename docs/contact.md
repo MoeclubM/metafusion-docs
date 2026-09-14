@@ -20,12 +20,12 @@ group: "meta"
 | 侵权 / 合规 | 社区私信站务 + 附 URL 与权属证明（见 [版权与 DMCA](/copyright)） |
 | 审核申诉 | 站内私信，附 Work/Release ID 与修订记录 |
 | Bug / 功能建议 | GitHub Issue，附复现步骤与截图 |
-| 文档错误 | GitHub PR 直接改 `docs-site/docs/*.md` |
+| 文档错误 | 到 [metafusion-docs](https://github.com/MoeclubM/metafusion-docs) 提 PR 直接改 `docs/*.md` |
 | 其它合作 | 站内私信站务账号 |
 
 ## 贡献文档
 
-本文档站内容位于 `docs-site/docs/`，每篇 Markdown 含 frontmatter：
+文档内容在本仓库的 `docs/`（这是文档的唯一源），每篇 Markdown 含 frontmatter：
 
 ```yaml
 ---
@@ -39,10 +39,10 @@ group: "api"  # start / model / guide / api / community / legal / meta
 修改后本地预览：
 
 ```bash
-cd docs-site && npm install && npm run dev  # http://localhost:3001/overview
+cd metafusion-docs && npm install && npm run dev  # http://localhost:3001/overview
 ```
 
-构建产物为 Next.js standalone，随 `docker compose up` 一键拉起。
+构建产物为 VitePress 静态站（sirv 托管），随主仓库的 `docker compose up` 一键拉起（该编排从本仓库目录构建 docs 服务）。
 
 ## 响应时间
 
