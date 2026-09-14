@@ -69,7 +69,7 @@ export default defineConfig({
         items: [
           { text: '词条编辑与合并规范', link: '/editing-guide' },
           { text: '资源收录与投稿标准', link: '/contribute-guide' },
-          { text: '媒体上传与转码流', link: '/upload-transcode' }
+          { text: '资源上传与下载', link: '/upload-download' }
         ]
       },
       {

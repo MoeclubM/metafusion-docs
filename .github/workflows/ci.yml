@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  docs:
+    name: vitepress build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+      - name: bun install
+        run: bun install --frozen-lockfile
+      - name: vitepress build
+        run: bun run build
+      - name: 死链自查（.vitepress 侧栏指向的文件必须存在）
+        run: |
+          bun -e 'const fs=require("fs");const cfg=fs.readFileSync("docs/.vitepress/config.mts","utf8");const links=[...cfg.matchAll(/link: .\/([a-z0-9-]+)./g)].map(m=>m[1]);const missing=links.filter(l=>!fs.existsSync("docs/"+l+".md"));if(missing.length){console.error("侧栏指向不存在的页面:",missing);process.exit(1)}console.log("侧栏链接全部存在:",links.length,"条")'
+  secrets-scan:
+    name: gitleaks (secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

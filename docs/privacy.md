@@ -14,17 +14,17 @@ group: "legal"
 - **账户信息**：用户名、邮箱、密码哈希、邀请链 `invited_by`
 - **内容信息**：你提交的元数据、帖子、媒体文件的 `sha256` 与 `technical_specs`
 - **日志**：`admin_audit_logs` 记录 L1 写入与 `asset_files` 访问的 `actor/target/ip/ua/时间`
-- **技术信息**：访问日志（Nginx `access.log`）、限流计数（Redis）、搜索关键词（ES/SQL）
+- **技术信息**：访问日志（Nginx `access.log`）、限流计数（当前为进程内存，预留 Redis）、搜索关键词（当前 SQL，预留 OpenSearch）
 
 ## 2. 使用目的
 
-- 提供编目、检索、播放、下载、社区与审计功能
+- 提供编目、检索、下载、社区与审计功能
 - 风控（邀请链溯源、限流、封禁）
 - 统计与改进搜索/推荐质量
 
 ## 3. 存储与保护
 
-- 密码仅存储哈希，`JWT_SECRET` 等敏感值通过环境变量注入，不落库明文
+- 密码仅存储哈希，令牌签名私钥（`AUTH_JWT_PRIVATE_KEY`）等敏感值通过环境变量注入，不落库明文
 - 原档与预览分桶存储，预签名 URL 2 小时过期
 - ES 默认 `xpack.security.enabled=false` 仅适用于本地；公网部署需开启认证或置于内网
 
