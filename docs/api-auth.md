@@ -6,7 +6,7 @@ group: "api"
 ---
 
 ::: warning 文档与实现存在差异（一手提示）
-本页描述的部分认证端点**在当前后端不存在**（`backend/internal/catalog/http.go` 未注册）：
+本页描述的部分认证端点**在当前后端不存在**（当前实例未注册这些端点）：
 
 - `POST /api/auth/register`、`GET /api/auth/invite`：**不存在**（无公开自助注册与邀请端点）
 - `GET|POST|DELETE /api/auth/tokens` 与 `mfp_` 前缀 PAT、`X-API-Key` 请求头：**不存在**（没有个人访问令牌体系）
@@ -57,7 +57,7 @@ POST /api/auth/change-password   # 修改密码（需旧密码）
 POST /api/auth/logout-all        # 吊销该用户全部会话
 ```
 
-登录响应结构以实际实现为准（字段为 `user` / `token` 等，见 `backend/internal/catalog/http.go`），不要依赖本页旧示例中的 `access_token` / `refresh_token` / `expires_in`。
+登录响应结构以实际实现为准（字段为 `user` / `token` 等，以实例响应为准），不要依赖本页旧示例中的 `access_token` / `refresh_token` / `expires_in`。
 
 - 账号由管理员通过 `POST /api/admin/users` 创建（请求体 `{username, email, password}`，默认角色 `editor`；改角色 `PUT /api/admin/users/:id/role` 请求体 `{role}`，取值 `user / editor / admin`）；不存在 `registration_enabled` / `invite_required` 注册开关端点（`GET /api/auth/settings` 仅返回能力标识，当前均为 `false`）
 - 首次部署未初始化时用 `GET /api/setup` 检查状态，`POST /api/setup` 创建超级管理员

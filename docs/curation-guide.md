@@ -186,7 +186,7 @@ graph TD
 
 ### 5.2 核心关系边矩阵 (Relationship Matrix)
 
-> **关系码修正**：下表为当前 definitions 种子的实际关系码（见 `backend/internal/catalog/defaults.go`，运行时清单以 `GET /api/catalog/definitions` 为准）。旧版本页引用的 `part_of_franchise / creator_of / included_in / crossover_with / prequel_of / spin_off_of / expansion_of / remake_of / member_of / voice_actor_of / imprint_of / real_counterpart_of / alternate_form_of / phonographic_copyright` **均不存在**。
+> **关系码修正**：下表为当前 definitions 种子的实际关系码（运行时清单以 `GET /api/catalog/definitions` 为准）。旧版本页引用的 `part_of_franchise / creator_of / included_in / crossover_with / prequel_of / spin_off_of / expansion_of / remake_of / member_of / voice_actor_of / imprint_of / real_counterpart_of / alternate_form_of / phonographic_copyright` **均不存在**。
 
 | 关系代码 (`type`) | 中文谓词 | 语义方向与定义 | 实际源/宿端 kind | 说明与约束 |
 |---|---|---|---|---|

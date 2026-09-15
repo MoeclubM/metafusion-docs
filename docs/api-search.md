@@ -6,11 +6,11 @@ group: "api"
 ---
 
 ::: warning 文档与实现存在差异（一手提示）
-**`GET /api/search` 不存在。** 当前检索为 `GET /api/catalog/entities?q=...`，服务端实现是 PostgreSQL 模糊/全文匹配（`title ILIKE` + `document->'translations'` 文本匹配，见 `backend/internal/catalog/store.go`）。
+**`GET /api/search` 不存在。** 当前检索入口是 `GET /api/catalog/entities?q=...`：标题与译文文本匹配。
 
 - 不存在：`GET /api/search?q=&type=&limit=&offset=`
 - 不存在响应结构 `{ works, artists, releases, total }`；`/api/catalog/entities` 返回 `{ items, total }`
-- OpenSearch 容器虽在 `deploy/docker-compose.yml` 中部署并注入 `ELASTICSEARCH_URL`，但当前 Go 代码中没有任何 OpenSearch 客户端调用，不要把它当作已生效的检索路径
+- 尚未接入 OpenSearch：当前检索全部由 PostgreSQL 提供，不要把它当作可用的检索路径
 
 **真实检索**：`GET /api/catalog/entities?q=<关键词>&kind=work&limit=10&offset=0`。
 :::

@@ -1,33 +1,30 @@
-# MetaFusion Docs
+# MetaFusion 文档站
 
-MetaFusion 官方全量架构指南、IFLA LRM 编目标准与开发者开放 API 独立文档站点。
+在线访问：<https://findverse.cc/docs/>
 
-## 📖 关于本项目
+本仓库是 MetaFusion 的**对外文档站**（VitePress 静态站，唯一来源），面向两类读者：
 
-本项目是 MetaFusion 平台的独立文档子系统，采用 [VitePress](https://vitepress.dev/) 纯静态生成（SSG），为开发者、编目考据员与普通用户提供高可读性、响应迅速的技术文档与使用指南。
+| 读者 | 在这里看什么 |
+| --- | --- |
+| **普通用户 / 社区成员** | 平台是什么、怎么找作品、怎么贡献与投稿、资源上传下载、社区规则、隐私与版权条款 |
+| **开发者 / 第三方接入** | REST API 参考（认证、Lookup / Browse / Search、编辑与关系写入、存储上传）、Agent 接入指引、数据模型与术语 |
 
-- **主项目 (Core Catalog)**: [MetaFusion](https://github.com/MoeclubM/MetaFusion)
-- **在线访问**: [https://findverse.cc/docs/](https://findverse.cc/docs/)
+## 这里不放什么
 
-## 🚀 本地开发与预览
+- **不放内部实现文档**：代码结构、数据库结构、部署与切流、各服务的实现细节属于主仓库
+  [MetaFusion](https://github.com/MoeclubM/MetaFusion) 的 `AGENTS.md` 与 `docs/`。
+- **不放本机运维信息**：机器、路径、凭据一律不进任何仓库。
+- **不放 Agent 的操作手册**：怎么用接口浏览/修改站点数据、写库被拒时怎么改，见
+  [metafusion-skills](https://github.com/MoeclubM/metafusion-skills)；本站只描述**接口本身**。
 
-```bash
-# 安装依赖
-npm install
+## 内容分区
 
-# 启动本地开发服务
-npm run dev
+- **入门与理念**：概览、快速开始、设计理念、FAQ
+- **数据模型**：实体与层级（LRM 增强骨架）、分类与标签、编目与投稿指南
+- **API**：认证、概览与主干、检索、编辑与关系、存储上传、Agent 接入
+- **条款**：服务条款、隐私、版权、联系方式、更新日志
 
-# 编译静态产物
-npm run build
+## 参与
 
-# 本地预览构建结果
-npm run preview
-```
-
-## 🐳 Docker 部署
-
-```bash
-docker build -t metafusion-docs .
-docker run -d -p 3001:3001 --name metafusion-docs metafusion-docs
-```
+发现表述错误、字段与接口不一致、或缺少章节，直接开 issue 或提 PR；文档以**实例的实际响应**为准，
+示例里的枚举与字段名不代替运行时核实。

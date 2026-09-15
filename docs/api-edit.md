@@ -71,7 +71,7 @@ PUT 是**整实体替换**而非局部 PATCH：必须先 GET 完整实体，按�
 
 ## 外部导入器能力
 
-导入器（`backend/internal/catalog/importer.go`）当前以 Bangumi 为来源，支持 `POST /api/importer/preview` 与 `POST /api/importer/import`，服务端在同一事务内创建条目链：
+导入器当前以 Bangumi 为来源，支持 `POST /api/importer/preview` 与 `POST /api/importer/import`，服务端在同一事务内创建条目链：
 
 - **条目 / Work**：题名、原语言、翻译、简介、封面、标签；发行链 Release → Medium → Track（轨道按 `contents[].expression_id` 关联 Expression）。
 - **关联演职员与角色**：会拉取 `/v0/subjects/{id}/persons` 与 `/v0/subjects/{id}/characters`，建 agent 实体与关系。语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` / `voiced_by`），否则落到通用署名 `credit_for` 并把职位原文写入 `credit_role`；角色本体的番位落 `role`、原始文本落 `credit_role`，声优建 `voiced_by` 并以 `character` 引用角色实体。

@@ -38,11 +38,8 @@ group: "api"  # start / model / guide / api / community / legal / meta
 
 修改后本地预览：
 
-```bash
-cd metafusion-docs && npm install && npm run dev  # http://localhost:3001/overview
-```
-
-构建产物为 VitePress 静态站（sirv 托管），随主仓库的 `docker compose up` 一键拉起（该编排从本仓库目录构建 docs 服务）。
+文档内容与站点源码在独立仓库 [metafusion-docs](https://github.com/MoeclubM/metafusion-docs)；
+发现表述错误、缺失章节或字段与接口不一致，直接开 issue 或提 PR。
 
 ## 响应时间
 

@@ -14,11 +14,11 @@ group: "api"
 - `CanonicalEntry` / `canonical_entry_id`（现为 `ContentUnit` + `Expression`，Track 通过 `contents[].expression_id` 关联）
 - `Artist`（现为 `Agent` kind）、`Franchise` 实体（由 `collection` kind + 关系表达）
 - `mfp_` PAT 与 `catalog:write` scope（无 PAT 体系）
-- 关系码 `prequel_of` / `spin_off_of` / `part_of_franchise` / `included_in` / `composer` / `lyricist` / `author` / `performer` / `arranger` / `producer` / `phonographic_copyright` 等：**均不存在于 definitions 种子**。实际关系码与端点见 [元数据目录教程](./catalog.md) 或 `backend/internal/catalog/defaults.go`，运行时以 `GET /api/catalog/definitions` 为准。
+- 关系码 `prequel_of` / `spin_off_of` / `part_of_franchise` / `included_in` / `composer` / `lyricist` / `author` / `performer` / `arranger` / `producer` / `phonographic_copyright` 等：**均不存在于 definitions 种子**。实际关系码与端点见 [元数据目录教程](./catalog.md) 或 `defaults.go`，运行时以 `GET /api/catalog/definitions` 为准。
 
-**导入器当前能力**（`POST /api/importer/preview` + `/import`，见 `backend/internal/catalog/importer.go`）：支持 Bangumi subject / person / character；抓取条目（Work）、发行链（Release → Medium → Track）、封面与头像，并会拉取 `/v0/subjects/{id}/persons` 与 `/v0/subjects/{id}/characters`，建 agent 实体与关系——语义明确的职位映射到精确关系码，否则落到通用署名 `credit_for` 并把职位原文写入 `credit_role`；角色本体的番位落 `role`、原文落 `credit_role`，声优建 `voiced_by` 并以 `character` 引用角色实体。**仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、发行版 `edition_type` 与 `publisher` 实体引用（预览仅有自由文本名称，不虚构）。
+**导入器当前能力**（`POST /api/importer/preview` + `/import`，以实例的 `POST /api/importer/preview` 响应为准）：支持 Bangumi subject / person / character；抓取条目（Work）、发行链（Release → Medium → Track）、封面与头像，并会拉取 `/v0/subjects/{id}/persons` 与 `/v0/subjects/{id}/characters`，建 agent 实体与关系——语义明确的职位映射到精确关系码，否则落到通用署名 `credit_for` 并把职位原文写入 `credit_role`；角色本体的番位落 `role`、原文落 `credit_role`，声优建 `voiced_by` 并以 `character` 引用角色实体。**仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、发行版 `edition_type` 与 `publisher` 实体引用（预览仅有自由文本名称，不虚构）。
 
-编写正确的写入请求体请参照 [新建与编辑](/api-edit) 与 `backend/internal/catalog/types.go` 的 `Edit` DTO；编目规范请阅读 [元数据目录教程](./catalog.md)。
+编写正确的写入请求体请参照 [新建与编辑](/api-edit) 与 [新建与编辑](/api-edit) 里的请求体说明；编目规范请阅读 [元数据目录教程](./catalog.md)。
 :::
 
 > 核心 API 统一使用 `/api` 与动态定义引擎。编目规范请阅读 [元数据目录教程](./catalog.md)。

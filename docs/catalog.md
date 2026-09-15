@@ -19,9 +19,9 @@ MetaFusion 采用基于实体责任骨架与动态目录定义的纯净架构。
 
 Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`position`、`locator`。允许跨作品引用，但被收录表达的 Work 必须明确列入发行的 `subjects`。不要重复创建同一个录音。专辑的概念编排使用有序 `includes` 关系；实际版次顺序以载体和 TrackContent 为准。
 
-`locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明（种子见 `backend/internal/catalog/defaults.go`，校验见 `validation.go`）：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景，取并集 fields 收敛可用子字段与必填（展示编辑顺序即并集顺序，`relative_to` 锚点置前）；无匹配场景时回退全局组（旧文档无 `schemes` 键时同样回退，保持向后兼容）。匹配场景任一声明 `require_range` 时，`locator` 至少一个内容语义（`semantics=content`，如时间码）子字段非空，否则报 `range_required`。新增独立字段 `isbn`（release 级产品标识，与品番/条码同组展示）与 `duration_source`（entity 引用的时长来源，仅 expression 可写，解释同一表达在不同版本中的时长差异），音乐场景模板已引用 `duration_source`。
+`locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景，取并集 fields 收敛可用子字段与必填（展示编辑顺序即并集顺序，`relative_to` 锚点置前）；无匹配场景时回退全局组（旧文档无 `schemes` 键时同样回退，保持向后兼容）。匹配场景任一声明 `require_range` 时，`locator` 至少一个内容语义（`semantics=content`，如时间码）子字段非空，否则报 `range_required`。新增独立字段 `isbn`（release 级产品标识，与品番/条码同组展示）与 `duration_source`（entity 引用的时长来源，仅 expression 可写，解释同一表达在不同版本中的时长差异），音乐场景模板已引用 `duration_source`。
 
-关系类型全部由服务端 definitions 驱动，运行时清单以 `GET /api/catalog/definitions` 为准（种子见 `backend/internal/catalog/defaults.go`）。署名类关系（work/content_unit/expression/release → agent）含 `created_by / performed_by / composed_by / lyricist_of / arranged_by / directed_by / written_by / illustrated_by / narrated_by / voiced_by / photographed_by / modeled_by / developed_by`；译者用 `translated_by`（work / content_unit / expression → agent，组 `credits`），不再挤占通用兜底；角色登场为 `character_in`（agent → work/collection，番位落 `role`，原始文本落 `credit_role`）；当来源职位没有贴切关系码时用通用兜底 `credit_for`（work/content_unit/expression/release → agent，职位原文落 `credit_role`），已有精确关系码时不再重复建边。关系通用可选字段为 `role`、`credit_role`、`context`、`character`、`language`、`begin_date`、`end_date`、`scope`。详情页的关系分区标题与顺序同样读各关系定义的分组声明，前端不写死关系码名单。
+关系类型全部由服务端 definitions 驱动，运行时清单以 `GET /api/catalog/definitions` 为准。署名类关系（work/content_unit/expression/release → agent）含 `created_by / performed_by / composed_by / lyricist_of / arranged_by / directed_by / written_by / illustrated_by / narrated_by / voiced_by / photographed_by / modeled_by / developed_by`；译者用 `translated_by`（work / content_unit / expression → agent，组 `credits`），不再挤占通用兜底；角色登场为 `character_in`（agent → work/collection，番位落 `role`，原始文本落 `credit_role`）；当来源职位没有贴切关系码时用通用兜底 `credit_for`（work/content_unit/expression/release → agent，职位原文落 `credit_role`），已有精确关系码时不再重复建边。关系通用可选字段为 `role`、`credit_role`、`context`、`character`、`language`、`begin_date`、`end_date`、`scope`。详情页的关系分区标题与顺序同样读各关系定义的分组声明，前端不写死关系码名单。
 
 ## 前端路由
 
@@ -103,23 +103,18 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 | 能力 | 由谁提供 | 说明 |
 | --- | --- | --- |
 | storage | `metafusion-storage` | 文件与绑定、内容寻址直传、下载与访问控制；**不做转码与预览流**（明确取舍） |
-| community / records | `metafusion-community` | 论坛、短评、收藏、互动记录（自有 `community` schema） |
+| community / records | `metafusion-community` | 论坛、短评、收藏与互动记录；帖子与收藏不属于元数据事实 |
 | exchange | 元数据目录自身 | `GET /api/exchange/entities/{id}` 导出快照；`POST /api/exchange/proposals` 提交编辑提案（一律落 `pending_review`） |
 | 账号与令牌 | `metafusion-auth` | 登录、会话、OAuth 2.0 / OIDC、JWKS；目录侧只验签，不保存账号数据 |
 
-子系统之间只通过 HTTP 契约交互：存储与互动服务判定实体可见性时调用目录的 `GET /api/catalog/entities/{id}`，
-**不跨库 JOIN、不复制对方的数据表**。
+需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`（非 200 按不存在处理）；
+合并过的 id 用 `GET /api/catalog/entities/{id}/resolve` 取当前身份，不要假定 ID 永久有效。
 
 Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响；其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。其余导入器、AI、通知与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。模块 SDK（`moduleapi`）与依赖治理（`moduledeps`）已随模块层退役。
 
-## 运行与验证
+## 不做的事
 
-在 `deploy/.env` 设置数据库凭据后：
+- **不做转码**：不生成 HLS 切片、预览音频、波形图或缩略图；资源上传与下载见 [资源上传与下载](/upload-download)。
+- **不做未接入能力的承诺**：通知、AI 增强、外部导入器扩展仍在规划中，接口文档里没写的端点就是还没有。
 
-```sh
-docker compose -p deploy -f deploy/docker-compose.metadata.yml up -d --build
-```
-
-应用自动初始化独立 `catalog` schema。只需 PostgreSQL 与应用即可运行；Compose 中网关和前端提供网页入口，Redis / OpenSearch / RustFS 属按需扩展（OpenSearch 走 `--profile search`）。对象存储凭据由存储服务读取（`STORAGE_S3_*`），目录侧不持有归档配置；**不做转码**（FFmpeg 与媒体分析随模块层退役，不再补）。
-
-全新数据库验收使用 `MF_V2_TEST_DSN=postgres://.../mf_v2_test?sslmode=disable`。测试会创建并仅删除本次生成的随机测试库，不清理指定的旧数据库或生产 schema。CI 配置 PostgreSQL 服务，防止集成测试被默认跳过。
+自建实例的部署、迁移与验收步骤属于开发文档，不在本手册范围内；面向开发者的代码仓与协作文档见 [MetaFusion](https://github.com/MoeclubM/MetaFusion)。

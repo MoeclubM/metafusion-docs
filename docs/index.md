@@ -33,3 +33,13 @@ features:
     title: 完整 API 与 Agent 友好
     details: 提供 MusicBrainz 风格的 Lookup / Browse / Search REST API 与 PAT 个人访问令牌，网页端功能 100% 支持程序化调用。
 ---
+
+## 本站写什么
+
+- **给用户与社区**：平台介绍、检索与投稿指南、资源上传下载、社区规范与条款。
+- **给开发者与第三方接入**：REST API 参考、数据模型与术语、Agent 接入指引。
+
+**不写内部实现与部署**：代码结构、数据库结构、部署与切流属于主仓库的协作文档；
+本机运维信息一律不入库。Agent 如何用接口浏览与修改站点数据，见
+[metafusion-skills](https://github.com/MoeclubM/metafusion-skills)。
+

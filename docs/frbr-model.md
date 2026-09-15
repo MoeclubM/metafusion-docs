@@ -8,7 +8,7 @@ group: "model"
 # IFLA LRM 增强版实体模型体系 (LRM-Enhanced Architecture)
 
 ::: warning 文档与实现存在差异（一手提示）
-本页的 **CanonicalEntry（LRM-E2）实体在当前实现中不存在**，实际固定实体骨架为八类：`agent / collection / work / content_unit / expression / release / medium / track`（见 `backend/internal/catalog/types.go`）。可复用的「表达」由 `Expression` 承载，同作品内目录由 `ContentUnit` 承载，`Track` 通过 `contents[].expression_id` 收录 `Expression`；不存在 `Artist` / `Franchise` 独立实体（分别由 `agent` kind 与 `collection` kind + 关系表达）。
+本页的 **CanonicalEntry（LRM-E2）实体在当前实现中不存在**，实际固定实体骨架为八类：`agent / collection / work / content_unit / expression / release / medium / track`（见 `types.go`）。可复用的「表达」由 `Expression` 承载，同作品内目录由 `ContentUnit` 承载，`Track` 通过 `contents[].expression_id` 收录 `Expression`；不存在 `Artist` / `Franchise` 独立实体（分别由 `agent` kind 与 `collection` kind + 关系表达）。
 
 本页保留 LRM 理论分层与建模哲学的讲解；落地字段与关系请以 [元数据目录教程](/catalog) 与 `/api/catalog/definitions` 为准。
 :::
@@ -194,7 +194,7 @@ classDiagram
 
 ### 5.1 实体连接矩阵与拓扑约束 (Graph Connectivity Matrix)
 
-> **关系码修正**：下表为当前 definitions 种子的实际关系码（见 `backend/internal/catalog/defaults.go`，运行时清单以 `GET /api/catalog/definitions` 为准）。旧版本页引用的 `part_of_franchise / creator_of / included_in / crossover_with / prequel_of / spin_off_of / expansion_of / remake_of / member_of / voice_actor_of / imprint_of / real_counterpart_of / alternate_form_of / phonographic_copyright` **均不存在**，请勿据此写入。
+> **关系码修正**：下表为当前 definitions 种子的实际关系码（运行时清单以 `GET /api/catalog/definitions` 为准）。旧版本页引用的 `part_of_franchise / creator_of / included_in / crossover_with / prequel_of / spin_off_of / expansion_of / remake_of / member_of / voice_actor_of / imprint_of / real_counterpart_of / alternate_form_of / phonographic_copyright` **均不存在**，请勿据此写入。
 
 | 源实体 kind (Source) | 目标实体 kind (Target) | 实际关系码 (`type`) | 语义与拓扑约束 |
 |---|---|---|---|

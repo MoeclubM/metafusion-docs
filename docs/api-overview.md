@@ -16,7 +16,7 @@ MetaFusion **不是** MusicBrainz WS/2 风格 API，下列本页提及的端点/
 - `inc=artists+releases+...` 展开参数与 `page` / `page_size` 分页（现为 `limit` / `offset` 与各实体独立字段）
 - `catalog` 写入并非 RESTful 逐实体端点，统一为 `POST|PUT /api/catalog/entities`
 
-**真实主干**：读 `GET /api/catalog/definitions`、`/api/catalog/entities`、`/api/catalog/entities/:id`、`/api/catalog/entities/:id/relations|revisions|occurrences`、`/api/catalog/compare`、`/api/catalog/tags`（标签频次聚合）、`/api/catalog/shelves`、`/api/catalog/external-databases`；写 `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id`、`POST /api/catalog/relations`、`PUT|DELETE /api/catalog/relations/:id`、`POST /api/catalog/entities/:id/lifecycle`；收藏 `POST /api/favorites/toggle`、`GET /api/favorites/status`、`GET /api/favorites/mine`、`GET /api/users/:id/favorites`；导入 `POST /api/importer/preview`、`POST /api/importer/import`；认证 `/api/setup`、`/api/auth/*`、`/api/oauth/*`。以 [OpenAPI](/api/openapi.json) 与 `backend/internal/catalog/http.go` 为准。
+**真实主干**：读 `GET /api/catalog/definitions`、`/api/catalog/entities`、`/api/catalog/entities/:id`、`/api/catalog/entities/:id/relations|revisions|occurrences`、`/api/catalog/compare`、`/api/catalog/tags`（标签频次聚合）、`/api/catalog/shelves`、`/api/catalog/external-databases`；写 `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id`、`POST /api/catalog/relations`、`PUT|DELETE /api/catalog/relations/:id`、`POST /api/catalog/entities/:id/lifecycle`；收藏 `POST /api/favorites/toggle`、`GET /api/favorites/status`、`GET /api/favorites/mine`、`GET /api/users/:id/favorites`；导入 `POST /api/importer/preview`、`POST /api/importer/import`；认证 `/api/setup`、`/api/auth/*`、`/api/oauth/*`。以 [OpenAPI](/api/openapi.json) 与 `http.go` 为准。
 :::
 
 # API 概览

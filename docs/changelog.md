@@ -16,9 +16,9 @@ group: "meta"
 
 ## 2026-08-21 — 文档站 v1.0
 
-- 独立文档站 `docs-site` 上线（独立于 `frontend` 与 `/admin`）
+- 独立文档站上线
 - 内容：概览、理念、快速开始、FRBR 五级、分类体系、编辑/投稿/上传、API 全教程（Auth/Lookup/Browse/Search/Edit/Storage/Agent）、社区、服务条款、隐私、版权、联系、FAQ
-- 网关：`Nginx /docs` 代理至 `docs:3001`，`docker-compose` 新增 `docs` 服务
+- 文档站内全文检索（标题 + 摘要），移动端抽屉式目录
 - 搜索：文档站内本地全文检索（标题+摘要），支持移动端抽屉
 
 ## 2026-08-20 — 需求确立

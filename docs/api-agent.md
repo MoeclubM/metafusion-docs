@@ -14,9 +14,9 @@ group: "api"
 - `canonical_entry` / `CanonicalEntry` 实体（现为 `content_unit` + `expression`）；`franchise` 实体（由 `collection` kind + 关系表达）
 - `mfp_` PAT 前缀、`catalog:write` scope、`X-API-Key` 请求头（无 PAT 体系）
 - 固定 422 错误码集（`DirtyTitleError` / `InvalidBarcode` / `MissingAuditInfo` 等）：服务端并未实现这套按名拦截，写入以 400/401/403/404/409 为主
-- 关系码 `part_of_franchise` / `prequel_of` / `spin_off_of` / `crossover_with` / `included_in` / `voice_actor_of` 等：definitions 种子中不存在，实际关系见 `backend/internal/catalog/defaults.go`
+- 关系码 `part_of_franchise` / `prequel_of` / `spin_off_of` / `crossover_with` / `included_in` / `voice_actor_of` 等：definitions 种子中不存在，实际关系见 `defaults.go`
 
-**真实写入模型**：`POST /api/catalog/entities`（`{entity, expected_version, edit_note, sources}`，支持 `Idempotency-Key`）、`PUT /api/catalog/entities/:id`（整实体替换 + 乐观锁）、`POST /api/catalog/relations`、`POST /api/catalog/entities/:id/lifecycle`（合并/退役）。复合作品结构需按层级多次调用，不存在单请求事务端点。以 [OpenAPI](/api/openapi.json) 与 `backend/internal/catalog/http.go` 为准。
+**真实写入模型**：`POST /api/catalog/entities`（`{entity, expected_version, edit_note, sources}`，支持 `Idempotency-Key`）、`PUT /api/catalog/entities/:id`（整实体替换 + 乐观锁）、`POST /api/catalog/relations`、`POST /api/catalog/entities/:id/lifecycle`（合并/退役）。复合作品结构需按层级多次调用，不存在单请求事务端点。以 [OpenAPI](/api/openapi.json) 与 `http.go` 为准。
 :::
 
 # AI Agent 自动化 API 与工具规范 (AI Agent API & Tool Specs)
