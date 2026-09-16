@@ -378,10 +378,10 @@ with urllib.request.urlopen(userinfo_request) as response:
 
 ### 9.1 用管理界面办这些事（不必写 curl）
 
-> **自助登记尚未接线**：账号服务另有开发者中心（`GET /api/developer/overview`、`GET|POST /api/developer/apps`、
-> `PUT|DELETE /api/developer/apps/{id}`、`POST /api/developer/apps/{id}/rotate-secret`，按应用归属授权），
-> 但网关的生效矩阵（主仓库 `deploy/nginx.conf`）还没有 `/api/developer/` 的 location，该前缀会被 `/api/` 兜到目录服务返回 404。
-> 在那之前，建客户端与管理客户端都走下面的管理台。
+> **自助登记入口**：网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`，接口
+> `GET /api/developer/overview`、`GET|POST /api/developer/apps`、`PUT|DELETE /api/developer/apps/{id}`、
+> `POST /api/developer/apps/{id}/rotate-secret`）自助登记并管理自己的应用——按**应用归属**授权，任何登录账号可用。
+> 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
 
 管理台（`/admin`）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。
 

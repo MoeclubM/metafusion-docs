@@ -43,7 +43,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
 | 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
-| 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`（开发者中心的 `/api/developer/*` 尚未经网关分流，见 [认证与凭证](/api-auth)） | 见 [认证与凭证](/api-auth) |
+| 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
 | 收藏与社区 | `/api/favorites/*`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放、写需登录 |
 | 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
 

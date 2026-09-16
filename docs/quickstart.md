@@ -67,7 +67,7 @@ group: "start"
 如果你希望开发第三方客户端、自动化同步脚本或 AI Agent：
 
 - **会话令牌**：登录即可获得访问令牌（`Authorization: Bearer <token>`，同时写入 Cookie `mf_session`），访问令牌 15 分钟有效、服务端会话兜底 24 小时，用 `POST /api/auth/refresh` 续期；
-- **OAuth 2.0**：第三方站点或长期接入走授权码流程（`/api/oauth/authorize` + `POST /api/oauth/token`），应用登记路径与部署现状见 [认证与凭证](/api-auth) 与 [第三方站点接入 OAuth 授权](/oauth-integration)；
+- **OAuth 2.0**：第三方站点或长期接入走授权码流程（`/api/oauth/authorize` + `POST /api/oauth/token`）；登录后在站内「开发者中心」（`/developer`）自助登记应用并领取 `client_id` 与密钥，完整契约见 [第三方站点接入 OAuth 授权](/oauth-integration)；
 - 接口清单、错误码与限流见 [API 概览](/api-overview)，写入所需的权限码见 [新建与编辑](/api-edit)。
 
 平台不签发个人访问令牌，也没有 `X-API-Key` 认证方式——程序化接入以上面两种凭证为准。
