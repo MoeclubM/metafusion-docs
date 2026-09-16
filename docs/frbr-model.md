@@ -54,15 +54,18 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 
 结构字段只在对应层级有意义，写入后 **不可改归属**（`400 immutable_scope`）：
 
-| 字段 | 用在 | 说明 |
+| 字段 | 只用在 | 说明 |
 |---|---|---|
-| `work_id` | content_unit / expression / release / medium / track | 所属作品 |
-| `content_unit_id` | expression | 所属内容单元 |
-| `release_id` / `medium_id` | medium / track | 所属发行版 / 载体 |
-| `parent_id` | content_unit / medium / track | 同层父节点（层级可嵌套） |
+| `work_id` | content_unit、expression（都必填） | 所属作品 |
+| `content_unit_id` | expression（可选） | 所属内容单元 |
+| `release_id` | medium（必填） | 所属发行版 |
+| `medium_id` | track（必填） | 所属载体 |
+| `parent_id` | content_unit / medium / track（可选） | 同域同层父节点（层级可嵌套） |
 | `position` / `number` | medium / track 等 | 排序整数 / 原始印刷编号 |
 | `contents[]` | track | `{ expression_id, position, locator, attributes }`：本位置收录的表达与定位 |
-| `subjects[]` | release | `{ work_id, role, position, attributes }`：本发行声明收录的作品 |
+| `subjects[]` | release | `{ work_id, role, position, attributes }`：本发行声明收录的作品，`role` 取 `primary` / `compilation` / `supplement` |
+
+发行版没有 `work_id`：它只能经 `subjects` 声明收录了哪些作品；`contents` 只对 `track` 有意义，`subjects` 只对 `release` 有意义。
 
 `locator` / `inclusion_attributes` / `subject_attributes` 的子字段由 definitions 的组字段与
 `schemes` 场景声明，可后台增删；写入时按拥有者的 kind / types 匹配场景，无匹配则回退全局组。

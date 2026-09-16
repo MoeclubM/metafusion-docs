@@ -76,15 +76,20 @@ POST /api/catalog/entities
 
 ### 层级与归属字段
 
-| 字段 | 用在 | 说明 |
+| 字段 | 只用在 | 说明 |
 |---|---|---|
-| `work_id` | content_unit / expression / release / medium / track | 所属作品（发行版用它声明收录的作品） |
-| `content_unit_id` | expression | 所属内容单元 |
-| `release_id` / `medium_id` | medium / track | 所属发行版 / 载体 |
-| `parent_id` | content_unit / medium / track | 同层父节点 |
-| `position` / `number` | medium / track 等 | 次序；列表按它排序 |
+| `work_id` | content_unit、expression（都必填） | 所属作品 |
+| `content_unit_id` | expression（可选） | 所属内容单元 |
+| `release_id` | medium（必填） | 所属发行版 |
+| `medium_id` | track（必填） | 所属载体 |
+| `parent_id` | content_unit / medium / track（可选） | 同域同层父节点 |
+| `position` / `number` | medium / track 等 | 次序（非负整数）/ 官方原文编号 |
 | `contents[]` | track | `{ expression_id, position, locator, attributes }`：这条曲目收录的是哪个表达 |
-| `subjects[]` | release | `{ work_id, role, position, attributes }`：发行版声明收录了哪些作品 |
+| `subjects[]` | release | `{ work_id, role, position, attributes }`：发行版声明收录了哪些作品；`role` 取 `primary` / `compilation` / `supplement`，同一作品同一角色只允许一条 |
+
+结构字段按层级收敛：**发行版没有 `work_id`**（收录关系只能经 `subjects`），`contents` 只对 `track` 有效、
+`subjects` 只对 `release` 有效；给某个 kind 传它用不到的结构字段会返回 `400 invalid_structural_field: <字段码>`，
+缺必填归属返回 `400 parent_required`。
 
 正确的顺序是按层级自下而上补齐：先 `work` → `content_unit` → `expression`，再 `release` → `medium` → `track`，
 最后按需建关系。`work_id` / `release_id` / `medium_id` / `kind` 在更新时**不可改**（`400 immutable_scope`），
