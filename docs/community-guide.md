@@ -24,8 +24,8 @@ MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、
 
 ## 浏览与发帖
 
-- **浏览**：社区大厅按板块列出主题，可按板块、语种（全部 / 中文 / 英文）、话题标签与关键词筛选。
-- **发起话题**：选择所属板块并填写标题与正文（正文按 Markdown 渲染），可关联一个目录条目、添加话题标签。**需要 `community.post.create`**：`member` 组默认持有该码，自定义权限组若没给这个码就不能发帖（这是权限组的设计意图，不是故障）。
+- **浏览**：社区大厅按板块列出主题，可按板块、话题标签与关键词筛选（不再有语种筛选；主题也不带语言字段）。
+- **发起话题**：选择所属板块并填写标题与正文（正文按 Markdown 渲染），可关联一个目录条目、添加话题标签（不再需要选择语言）。**需要 `community.post.create`**：`member` 组默认持有该码，自定义权限组若没给这个码就不能发帖（这是权限组的设计意图，不是故障）。
 - **参与回复**：进入主题详情页阅读完整楼层，在页面底部撰写回复，可引用指定楼层（`reply_to_post_number`）；与发主题同一权限码。
 - **条目短评**：条目页的短评写入评论专用板块——它锚定条目、没有独立标题，也不进入信息流；同样需要 `community.post.create`。
 - **收藏**：登录后可以收藏条目；`GET /api/favorites/mine` 读自己的收藏，`GET /api/users/:id/favorites` 读他人收藏（按请求方的实体可见性过滤）。设置页里的「收藏公开」开关目前是只读展示，还没有修改入口。
@@ -38,11 +38,11 @@ MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、
 | 操作 | 接口 | 所需权限码 | 可改内容 |
 | --- | --- | --- | --- |
 | 置顶 / 取消置顶 | `PUT /api/community/topics/{id}/pin` | `community.topic.pin` | 请求体 `{"pinned": true\|false}`；写主题的 `is_pinned` 列，主题列表里置顶项排在前面 |
-| 板块配置 | `PUT /api/community/boards/{code}` | `community.board.manage` | `names`、`descriptions`（四语 map）、`color`、`icon`、`sort_order`、`is_enabled`、`show_in_feed` |
+| 板块配置 | `PUT /api/community/boards/{code}` | `community.board.manage` | `name`、`description`（都是**单一字符串**，不再分语种）、`color`、`icon`、`sort_order`、`is_enabled`、`show_in_feed` |
 
 - 两个接口都是**只改传入字段**：单独切 `show_in_feed` 或 `is_enabled` 时不必回传整份配置，也就不会因为漏带字段而把配置清空。
 - 板块 `code` 不可改（它是主题的板块归属键，改码要么让存量主题悬空、要么得级联改主题归属）；服务也不提供新增与删除板块：板块由种子播种、运营配置，删掉会让存量主题失去归属。
-- 板块名称传入时必须四语齐备（`zh-CN` / `zh-TW` / `en-US` 逐个必需，日文 `ja` 或 `ja-JP` 其一），缺失返回 `400 four_locale_names_required`，错误串里列出缺失语种；区块颜色与图标不接受空值。
+- 板块名称不再要求多语种：`name` 传入时必须是非空字符串（空值或空白返回 `400 invalid_payload`），`description` 可为空串；错误码 `four_locale_names_required` 已从社区接口退役（定义 / 货架 / 外部库仍保留该约束）。区块颜色与图标不接受空值。
 - 权限与状态码：缺权限码 `403 forbidden`，未登录 `401 authentication_required`，主题或板块不存在 `404 not_found`，请求体不合法（如置顶缺 `pinned`、板块空载荷）`400 invalid_payload`。
 
 ## 社区规范与审核
