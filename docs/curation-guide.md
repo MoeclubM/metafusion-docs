@@ -131,7 +131,9 @@ work/content_unit/expression/release → agent。需要新关系码时，走后�
 
 - 声优配音：多条 `voiced_by`，`character` 引用角色实体，`language` / `context` 区分语种与适用篇目
 - 角色登场：同一角色跨作品用多条 `character_in`，番位落 `character_rank`，原文落 `credit_role`
-- 服务端按「端点 + 类型 + 属性 + position」判重，不按人名去重；声明 `acyclic` 的关系写入前会做环路检测
+- 服务端按「端点 + 类型 + 属性」判重（不按人名去重）；同一端点同属性、仅 `position` 不同的边会被唯一索引拒绝
+  （`400 constraint_violation`）——要表达同一演员的两个角色位，请让 `character` 等属性不同
+- 声明 `acyclic` 的关系写入前会做环路检测
 
 ## 5. 封面保真
 

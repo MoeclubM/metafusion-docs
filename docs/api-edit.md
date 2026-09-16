@@ -136,6 +136,10 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 | `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming` |
 | `relation_cycle` | 声明了 `acyclic` 的关系形成环路（如同类续作互指） |
 
+判重的去重键是「端点 + 类型 + 属性」（**不含 `position`**）：同一对端点、同一关系码、属性也完全相同、
+只有 `position` 不同的两条边会被库内唯一索引拦下（`400 constraint_violation`）。
+要表达「同一演员在同一作品的两个角色位」，请让 `attributes` 不同（如 `character` 指向不同角色实体）。
+
 默认种子的关系码（以 `GET /api/catalog/definitions` 为准）：
 
 - **credits**（署名，一般指向 agent）：`created_by`、`performed_by`、`photographed_by`、`modeled_by`、
