@@ -59,6 +59,7 @@ export default defineConfig({
         items: [
           { text: 'API 架构概览 (WS/2 范式)', link: '/api-overview' },
           { text: 'PAT 访问令牌与认证', link: '/api-auth' },
+          { text: '第三方站点接入 OAuth 授权', link: '/oauth-integration' },
           { text: '实体查询与关联展开 (Lookup/Browse)', link: '/api-lookup-browse' },
           { text: '全文搜索与多维过滤 (Search)', link: '/api-search' },
           { text: '词条写入与合并接口', link: '/api-edit' },

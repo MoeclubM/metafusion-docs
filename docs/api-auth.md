@@ -25,6 +25,9 @@ group: "api"
 | 会话令牌 / Cookie | `POST /api/auth/login` | 服务端会话决定 | 网页端与 API 调用 |
 | OAuth 2.0 授权码 | `/api/oauth/authorize` + `POST /api/oauth/token` | 由客户端配置决定 | 第三方应用与 OIDC 接入 |
 
+第三方站点把 MetaFusion 作为授权方接入的完整契约（发现文档、同意页、scope 收敛、PKCE、换码与 userinfo、管理端接口、已知限制）见
+[第三方站点接入 OAuth 授权](/oauth-integration)。
+
 二者均可通过请求头或 Cookie 携带：
 
 ```http
