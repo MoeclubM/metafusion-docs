@@ -19,7 +19,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | 事实 | 来源 |
 | --- | --- |
 | 端点、请求体模式、响应模式 | `GET /api/openapi.json`（OpenAPI 3.0.3，只覆盖目录服务） |
-| 发布态定义：types / fields / vocabularies / relations / templates / schemes / structure，以及八类 kind 的多语言名 `kinds` | `GET /api/catalog/definitions` |
+| 发布态定义：types / fields / vocabularies / relations / templates / schemes / structure，以及八类 kind 的多语言名 `kinds`（每项名称是四语 map） | `GET /api/catalog/definitions` |
 | 实际能力 | 目标实例的响应；文档与响应冲突时以响应为准，暂停写入并记录差异 |
 
 八类 kind 是固定的骨架：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`。`kind` 参数取具体 kind，没有 `all`。
@@ -214,6 +214,7 @@ POST /api/catalog/entities/:id/lifecycle
 | 400 | `immutable_scope` | 想改 `kind` / `work_id` / `release_id` / `medium_id` | 换归属要重建实体；重复建档走生命周期合并 |
 | 400 | `use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 改走 `POST /api/catalog/entities/:id/lifecycle` |
 | 400 | `translation_required` | 发布态一条 `translations` 都没有 | 至少补一个语种的翻译行再发布 |
+| 400 | `four_locale_names_required` | 定义 / 货架 / 外部库的名称缺语种（冒号后列出缺失项，如 `four_locale_names_required: zh-TW,ja-JP`） | 找齐四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`）后重提定义草稿；不要靠停用条目绕开校验 |
 | 400 | `parent_required` | 缺结构归属：`content_unit` / `expression` 缺 `work_id`、`medium` 缺 `release_id`、`track` 缺 `medium_id` | 补归属，或改到正确的层级提交 |
 | 400 | `undeclared_release_subject` | Track 收录的表达所属 Work 没有在该发行的 `subjects` 中声明 | 在该发行上补 `subjects`，再重放 Track |
 | 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系语义校验失败：码不存在或未启用、端点 kind 或类型不允许（自环也走这里）、重复边、超基数、成环 | 只用 definitions 中 enabled 的码与允许的端点；自环一律不支持；先删冲突旧边再建 |

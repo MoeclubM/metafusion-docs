@@ -113,7 +113,7 @@ POST /api/catalog/expressions/details
 
 | 端点 | 用途 |
 |---|---|
-| `GET /api/catalog/definitions` | 已发布的动态定义：`types` / `fields` / `vocabularies` / `relations` / `templates`，以及固定骨架的多语言 kind 名 |
+| `GET /api/catalog/definitions` | 已发布的动态定义：`types` / `fields` / `vocabularies` / `relations` / `templates`，以及固定骨架的多语言 kind 名（名称均为四语 map：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`） |
 | `GET /api/catalog/tags` | 标签频次聚合（只统计已发布实体；`q` 过滤、`limit` 默认 200 上限 500） |
 | `GET /api/catalog/shelves` | 已启用的虚拟货架规则 |
 | `GET /api/catalog/shelves/feed` | 每个货架加求值后的条目（`per_shelf` 默认 12、上限 100），登录用户按其首页偏好重排 |

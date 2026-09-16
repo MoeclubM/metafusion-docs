@@ -43,7 +43,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 管理员打开 `/admin`（旧 `/catalog/admin` 已重定向），Definitions 页签覆盖 types / fields / vocabularies / relations / templates / schemes：
 
-1. 添加稳定代码与中英名称，选择固定实体层级。
+1. 添加稳定代码与四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`），选择固定实体层级。
 2. 在共享字段库定义文本、多语言、数字、日期、布尔、网址、词表、实体引用、列表或字段组；在类型与关系中引用同一个字段。
 3. 定义关系的正反向名称、端点层级与类型、上下文、基数、对称性、无环和显示分组。
 4. 定义模板分区、字段顺序、列表列、目录模式与关系分区顺序（`relation_groups`）。
@@ -51,6 +51,8 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 5. 填写编辑说明与来源，保存草稿，检查既有数据影响，然后发布。冲突或过期基础版本会阻止发布。
 
 正在使用的定义请停用，不要删除。停用值可以保留并继续显示，不能在新数据中重新使用。发布后表单和详情读取新的定义；无专用模板的类型使用通用展示。
+
+名称缺语种会在保存草稿时被拒：`400 four_locale_names_required: <缺失语种>`。校验只覆盖启用中的类型 / 字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案，以及货架与外部权威库的 `names`；停用条目与空 `group_names` 不参与校验。
 
 ## 写入与审核
 
@@ -97,8 +99,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 但含义已从"进程内模块开关"变为**部署态**：`enabled` 取决于是否配置了对应上游地址，
 `healthy` 来自后台每 30 秒一次的 `/health` 探测缓存（请求路径只读缓存，不被上游拖慢）。
 
-运行时开关已退役：`PUT /api/admin/modules/:id` 恒定返回 `409 module_toggle_retired`——能力由部署决定（服务在不在），
-不再由后台开关决定。
+`PUT /api/admin/modules/:id` 恒定返回 `409 module_toggle_retired`：能力由部署决定（服务在不在）。
 
 | 能力 | 由谁提供 | 说明 |
 | --- | --- | --- |
@@ -110,7 +111,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`（非 200 按不存在处理）；
 合并过的 id 用 `GET /api/catalog/entities/{id}/resolve` 取当前身份，不要假定 ID 永久有效。
 
-Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响；其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。其余导入器、AI、通知与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。模块 SDK（`moduleapi`）与依赖治理（`moduledeps`）已随模块层退役。
+Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响；其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。其余导入器、AI、通知与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。
 
 ## 不做的事
 

@@ -123,7 +123,7 @@ group: "guide"
 `directed_by` / `written_by` / `illustrated_by` / `narrated_by` / `voiced_by` /
 `photographed_by` / `modeled_by` / `developed_by` / `translated_by`）统一为
 work/content_unit/expression/release → agent。需要新关系码时，走后台 Definitions 的
-草稿 → 影响面校验 → 发布，而不是改代码。
+草稿 → 影响面校验 → 发布。
 
 ### 4.2 多边区分
 
@@ -159,6 +159,9 @@ work/content_unit/expression/release → agent。需要新关系码时，走后�
 - 展示回退链：请求语言 → `en-US` → `original_language` → 基础字段（只影响展示，不回写数据）
 - 动态术语（类型、字段、词表项、关系码）的多语言名称来自 definitions，前端不硬编码；
   UI 文案走四个语种字典 `frontend/src/messages/{zh-CN,en-US,zh-TW,ja-JP}.json`
+- **定义侧的名称是四语硬约束**：类型、字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、
+  模板与分区、场景方案、货架与外部权威库的 `names` 都要带 `zh-CN` / `zh-TW` / `en-US` 与 `ja` 或 `ja-JP`，
+  缺语种写入返回 `400 four_locale_names_required`；实体自身的 `translations` 仍只要求发布时至少一条
 
 ### 6.2 修订与证据
 
@@ -192,6 +195,7 @@ work/content_unit/expression/release → agent。需要新关系码时，走后�
 ### 7.5 图谱与多语言
 - [ ] 声明 `acyclic` 的关系没有自环或双向回环
 - [ ] `original_language` 明确，多语言行齐备且原语言行存在
+- [ ] 新增或修改定义 / 货架 / 外部库时，名称四语齐备（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`），不留英文占位
 - [ ] `edit_note` 说清依据，`sources` 至少一条且可访问
 
 ## 8. 延伸阅读

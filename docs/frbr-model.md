@@ -8,8 +8,7 @@ group: "model"
 # IFLA LRM 增强版实体模型
 
 MetaFusion 借用 IFLA LRM 的分层思想组织元数据，但落地形态是一套**固定八类实体骨架 +
-服务端动态定义**，没有硬编码的 `media_type` 分类树，也没有名为 `CanonicalEntry` / `Artist` /
-`Franchise` 的实体。可以编辑的类型、字段、词表、关系与展示模板全部来自
+服务端动态定义**，没有硬编码的 `media_type` 分类树。可以编辑的类型、字段、词表、关系与展示模板全部来自
 `GET /api/catalog/definitions`。
 
 ## LRM 概念到实现的映射

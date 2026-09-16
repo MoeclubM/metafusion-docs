@@ -34,7 +34,7 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 {
   "id": 3,
   "slug": "theatrical-anime",
-  "names": { "zh-CN": "剧场动画", "en-US": "Theatrical anime" },
+  "names": { "zh-CN": "剧场动画", "zh-TW": "劇場動畫", "ja": "劇場アニメ", "en-US": "Theatrical anime" },
   "query": {
     "types": ["animation"],
     "fields": { "format": ["movie"] },
@@ -52,6 +52,7 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 - 公开读端点：`GET /api/catalog/shelves`（规则）与 `GET /api/catalog/shelves/feed`
   （带求值后的条目，`per_shelf` 默认 12、上限 100）
 - **新建与修改货架需要 `catalog.shelves.manage`**（管理台 `/api/admin/shelves`），普通用户不能自建货架
+- `names` 与其它定义名称同一条硬约束：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`，缺一项返回 `400 four_locale_names_required`
 - 登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 调整首页货架的**顺序与显隐**
   （请求体 `{ order, hidden }`，slug 去空去重并按已启用货架校验，未知 slug 报 `unknown_shelf`）；
   `/shelves/feed` 会按该偏好重排与隐藏
@@ -75,6 +76,9 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 - 展示回退链：请求语言 → `en-US` → `original_language` → 实体基础字段（只影响展示，不回写数据）
 - 动态术语（实体类型、关系码、词表项、字段名）的多语言名称来自 definitions，
   前端用现成 helper 解析，不硬编码
+- **定义侧的名称是四语硬约束**：类型、字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、
+  模板与分区、场景方案，以及货架与外部权威库的 `names`，都必须同时带 `zh-CN` / `zh-TW` / `en-US`
+  与 `ja` 或 `ja-JP`（缺语种返回 `400 four_locale_names_required`）；实体自身的 `translations` 只要求发布时至少一条
 
 ## 5. 探索页与筛选
 

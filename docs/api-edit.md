@@ -224,6 +224,20 @@ GET /api/catalog/entities/:id/revisions
 | `POST /api/admin/catalog-definitions/:id/publish` | 发布兼容草稿 |
 | `POST /api/admin/catalog-definitions/:id/rollback` | 把历史版本重新起草并发布（文档已一致时 `no_op=true`，不写库） |
 
+定义、货架与外部权威库的**名称是四语硬约束**：每个名称都要带 `zh-CN`、`zh-TW`、`en-US`，
+并且至少带 `ja` 或 `ja-JP` 之一；缺任一项，写入直接失败并返回
+`400 four_locale_names_required: <缺失语种>`（多个缺失项以逗号分隔，如 `four_locale_names_required: zh-TW,ja-JP`）。
+
+它作用于定义文档里**启用中**的条目：
+
+- 类型（`types`）、字段（`fields`，含嵌套子字段；字段单位 `unit` 只在声明了单位时校验）
+- 词表与词项（`vocabularies` / `terms`）、关系（`relations` 的 `names` / `reverse_names` / `group_names`）
+- 模板与模板分区（`templates` / `sections`）、场景方案（`schemes`）
+- 货架 `names`（`/api/admin/shelves`）与外部权威库 `names`（`/api/admin/external-databases`）
+
+停用的类型 / 字段 / 词项 / 关系 / 场景不参与校验（存量两语条目可以原样保留），空 `group_names` 视为未声明。
+判定只看「键在且非空」，不要求译文与英文不同：`CD`、`Spotify`、`ISBN` 这类专有名词四语同形是合法的。
+
 ## 示例
 
 ```bash

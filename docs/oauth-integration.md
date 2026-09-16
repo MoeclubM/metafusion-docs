@@ -373,8 +373,7 @@ with urllib.request.urlopen(userinfo_request) as response:
 - 删除客户端**不会**删除审计记录（审计只按 `client_id` 文本关联，不建外键），历史同意与拒绝仍可查。
 - 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、
   `client_secret_rotated`、`client_deleted`、`tokens_revoked`。
-- 另有 `GET /api/oauth/clients`：登录后可见的客户端基本信息列表（不含密钥哈希），供普通用户与前端读取，
-  与上面的管理面接口不是一回事。
+- 另有 `GET /api/oauth/clients`：登录后可见的客户端基本信息列表（不含密钥哈希），供普通用户与前端读取。
 
 ### 9.1 用管理界面办这些事（不必写 curl）
 
@@ -401,7 +400,7 @@ with urllib.request.urlopen(userinfo_request) as response:
 
 ## 10. 已知限制
 
-下面都是当前实现的现状，不是「配置没开」，接入前请按它们设计：
+下面都是当前实现的现状，接入前请按它们设计：
 
 - **没有 `refresh_token`**：访问令牌 15 分钟到期后只能重新走完整授权流程。想要更长的登录态，
   要么让本地会话短于 15 分钟并接受重新授权，要么由下游自己维护会话（授权只用于首次身份确认）。

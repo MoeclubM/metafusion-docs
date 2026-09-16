@@ -92,6 +92,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `immutable_scope` | 改动了不可变归属：`kind` / `work_id` / `release_id` / `medium_id` |
 | 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged` |
 | 400 | `translation_required` | 发布时一条 `translations` 都没有 |
+| 400 | `four_locale_names_required` | 定义文档 / 货架 / 外部权威库里的名称缺语种：`error` 形如 `four_locale_names_required: zh-TW,ja-JP`，冒号后是缺失的语种 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段不存在 |
 | 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系写入的语义校验失败（见 [新建与编辑](/api-edit)） |
 | 400 | `invalid_merge_target` | 合并目标不是同 kind、同归属的已发布实体 |
