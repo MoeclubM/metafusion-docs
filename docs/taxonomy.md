@@ -48,6 +48,7 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 }
 ```
 
+- `sort` 取 `updated`（默认，按最后更新时间倒序）、`created`（按创建时间倒序；实体 id 是 UUIDv7，时间有序，毫秒精度）、`title`（按题名升序）；其它取值返回 `400 invalid_sort`
 - `query` 的四个子条件是 **AND**，同一个数组内是 **OR**；空 `query` 表示收录全部已发布作品
 - 公开读端点：`GET /api/catalog/shelves`（只返回已启用的规则）与 `GET /api/catalog/shelves/feed`
   （带求值后的条目，`per_shelf` 默认 12、上限 100）
