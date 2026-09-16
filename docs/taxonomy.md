@@ -84,6 +84,7 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 - **关键词**：`q` 按标题与译文做子串匹配（见 [检索](/api-search)）
 - **多维过滤**：`kind` / `kinds` / `type` / `types` / `status` / `tags` /
   `work_id` / `content_unit_id` / `release_id` / `medium_id` / `parent_id` / `field` + `value`
+  （探索页的筛选面板以标签为主，动态类型也能经 API 过滤）
 - **排序**：列表默认按 `updated_at DESC, id`；按关联 id 查结构子项时按 `position` 升序
   （当前没有「按热度」这类排序）
 - **分页**：`limit`（默认 50、上限 100）/ `offset`，响应带真实 `total`

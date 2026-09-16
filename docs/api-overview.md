@@ -27,7 +27,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 能力 | 真实端点 | 认证 |
 |---|---|---|
 | 动态定义 | `GET /api/catalog/definitions` | 开放 |
-| 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `type` / `types` / `status` / 关联 id / `field`+ `value` / `tags` / `limit` / `offset`） | 开放 |
+| 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `type` / `types` / `status` / 关联 id / `field` + `value` / `tags` / `limit` / `offset`） | 开放 |
 | 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
 | 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录 + `catalog.entity.edit` |
@@ -43,7 +43,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
 | 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
-| 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*` | 见 [认证与凭证](/api-auth) |
+| 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`（开发者中心的 `/api/developer/*` 尚未经网关分流，见 [认证与凭证](/api-auth)） | 见 [认证与凭证](/api-auth) |
 | 收藏与社区 | `/api/favorites/*`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放、写需登录 |
 | 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
 
