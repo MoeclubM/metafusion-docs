@@ -45,7 +45,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
 | 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 | 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
-| 收藏与社区 | `/api/favorites/*`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放、写需登录 |
+| 收藏与社区 | `/api/favorites/*`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`（`member` 组默认持有发帖码） |
 | 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
 
 ## 访问模型

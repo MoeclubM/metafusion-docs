@@ -22,6 +22,9 @@ MetaFusion 只做**受控分发**：上传的是原始文件，下载回的也�
 | 分片预签名直传 | `POST /api/storage/upload/initiate` → 逐片 `PUT` → `POST /api/storage/upload/complete` | 对象存储经反代对外可达时；大文件并行上传、可断点续传 |
 | 服务端流式上传 | `PUT /api/storage/upload/stream/{asset_id}`（用 initiate 返回的 `direct_upload_url`） | 本地对象模式（未配置对象存储端点），或预签名地址对浏览器不可达时的回退；边收边算 sha256 并与声明比对 |
 
+- **权限**：上传与绑定（`initiate` / `complete` / `upload/stream` / `bind`）需要登录**且**持有 `storage.asset.upload`；
+  缺码是 `403 forbidden`，未登录是 `401 authentication_required`。`member` 组默认持有该码（默认「登录即可上传」），
+  站点要限制上传时从该组移除；解绑不需要该码（只能删自己的绑定）。
 - **秒传**：上传前本地算 sha256，平台已有同一份二进制即直接复用（内容寻址，不重复占空间）。
 - **绑定**：`POST /api/storage/bind` 用 `binding_role` 说明用途（`master_archive` / `track_audio` / `disc_image` / `scans` …）。
 - **暂存与去重**：对象键由 sha256 派生（`objects/<前两位>/<sha256>/<文件名>`），同一内容恒定映射同一键。

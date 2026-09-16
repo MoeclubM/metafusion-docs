@@ -25,6 +25,7 @@ group: "api"
 | `catalog.definitions.manage` | 起草、校验、发布动态定义 |
 | `catalog.import.submit` | 调用外部导入的预览与落库 |
 | `catalog.shelves.manage` | 维护货架规则 |
+| `storage.asset.upload` | 上传与登记自己的资产（`/api/storage/upload/*`、`POST /api/storage/bind`；`member` 组默认持有） |
 
 权限码由账号服务装进权限组、随访问令牌的 `permissions` 声明下发（admin 组带 `*` 通配）。
 只有完全没有 `permissions` 声明的老令牌才按历史角色兜底（admin 放行全部目录码，editor 放行 `catalog.entity.edit`）。

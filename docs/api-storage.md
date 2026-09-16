@@ -16,6 +16,15 @@ group: "api"
 写接口（`initiate` / `complete` / `upload/stream` / `bind` / `unbind`）与 `/stats` 需要登录
 （`Authorization: Bearer <token>` 或 HttpOnly Cookie `mf_session`）；其余读接口允许匿名，但只返回对调用者可见的内容，不可读一律 404。
 
+**创建与登记自己的资产**（`initiate` / `complete` / `upload/stream` / `bind`）另外要求权限码 `storage.asset.upload`，
+缺码返回 `403 forbidden`（未登录仍是 `401 authentication_required`）。`member` 组默认持有该码，
+所以"登录即可上传"在默认配置下不变；实例要收紧上传时，从该组权限里移除它即可。
+`unbind` 不需要该码：它只能删自己的绑定（所有权在服务内判定）。
+
+两个存储权限码的分工：`storage.asset.upload` 是「创建并登记自己的东西」，
+`storage.asset.moderate` 是「处置他人的东西」——续传/覆盖他人未完成的上传、完成或绑定他人资产、读全局 `/stats`。
+两者互不蕴含：只有审核权的人不能替别人创建资产，只有上传权的人也不能动他人的资产。
+
 ## 初始化（秒传检测）
 
 ```http
