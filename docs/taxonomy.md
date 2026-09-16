@@ -1,80 +1,95 @@
 ---
 title: "编目体系：标签 / 货架 / 封面 / 多语言"
-description: "MetaFusion LRM 编目模型、自由标签体系、虚拟货架规则与多语言本地化体系。"
+description: "MetaFusion 的标签体系、虚拟货架规则、封面比例与多语言本地化。"
 order: 11
 group: "model"
 ---
 
 # 编目体系：标签 / 货架 / 封面 / 多语言
 
-MetaFusion 采用 **IFLA LRM 混合编目模型**。固定实体骨架为八类（`agent / collection / work / content_unit / expression / release / medium / track`），保持纯净标题与核心概念，业务形态由服务端动态 definitions 的 `types` 表达，规格由 Release / Medium 载体表达，检索特征通过「**自由标签 + 虚拟货架 + 实体图谱边**」自然呈现，彻底淘汰传统的硬编码 `media_type` 与僵化的单继承分类树。
+MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `content_unit` /
+`expression` / `release` / `medium` / `track`）。作品形态由服务端动态定义（types + 字段）表达，
+规格由发行版与载体表达，检索特征靠「自由标签 + 虚拟货架 + 实体关系边」呈现，没有硬编码的
+`media_type` 与单继承分类树。
 
----
+## 1. 自由标签体系
 
-## 1. 自由标签体系 (Tags)
+标签是实体属性 `attributes.tags` 里的平铺字符串列表，用来放流派、题材、风格与大众检索词
+（`J-Pop`、`科幻`、`机甲`、`治愈`、`摇滚`）：
 
-标签（`attributes.tags`）是平铺、自由的字符串列表，专用于流派、题材、风格与大众特色检索词（如 `J-Pop`、`科幻`、`机甲`、`治愈`、`摇滚`、`同人`）：
+- **平铺无分类**：标签没有层级与分类树，也没有独立的字典表；后台可声明「标签」字段的呈现方式，
+  但标签本身仍是自由字符串
+- **与业务类型分工**：宏观业务类型（`album`、`animation`、`novel` …）走实体的 `types`，
+  对应后台的类型定义与展示模板；物理与分发规格（CD / BD / Vinyl / 纸张 / Web）落在发行版与载体
+- **频次聚合**：`GET /api/catalog/tags` 就地展开已发布实体的标签并统计频次（`q` 过滤、
+  `limit` 默认 200 上限 500），供标签云与筛选建议
+- **筛选**：`GET /api/catalog/entities?tags=科幻,机甲` 是**任一命中即返回**（OR，服务端走 JSONB 包含匹配）；
+  要「同时满足」需要调用方自行求交
 
-- **平铺无分类**：标签不设立人为的 `group_type` 或分类树，保持纯粹的自由检索与群众标注属性；
-- **职责解耦**：
-  - **业务类型（Types）**：作品宏观业务类型（如 `animation`、`album`、`single`、`novel` 等）通过 `Entity.types` 挂载，并自动引用服务端 definitions 的动态字段方案（Inclusion Scheme）与展示模板；
-  - **载体规格（Medium Format）**：物理与分发规格（如 `CD`、`BD`、`Vinyl`、`DVD`、`Paper`、`Web`）归属于发行版（Release）及载体介质（Medium），不作为概念层 Work 的标签；
-  - **自由标签（Tags）**：记录题材、流派与风格，底层通过 GIN 路径索引支持高效包含匹配，由 `GET /api/catalog/tags` 提供实时频次聚合。
+## 2. 虚拟货架
 
-> **注**：发行规格（如 `4K UHD`、`Hi-Res FLAC`、`SACD`、`EPUB`）属于发行版与物理 Medium 属性，不再作为 Work 标签，避免概念层与实物层混淆。
+货架（shelf）是首页与探索页共用的聚合规则，由服务端定义并求值，前端不硬编码分类：
 
----
+```json
+{
+  "id": 3,
+  "slug": "theatrical-anime",
+  "names": { "zh-CN": "剧场动画", "en-US": "Theatrical anime" },
+  "query": {
+    "types": ["animation"],
+    "fields": { "format": ["movie"] },
+    "vocab_terms": { "genre": ["fantasy"] },
+    "relations": ["adaptation_of"]
+  },
+  "sort": "updated",
+  "icon": "Film",
+  "enabled": true,
+  "sort_order": 10
+}
+```
 
-## 2. 虚拟货架体系 (Virtual Shelves)
+- `query` 的四个子条件是 **AND**，同一个数组内是 **OR**；空 `query` 表示收录全部已发布作品
+- 公开读端点：`GET /api/catalog/shelves`（规则）与 `GET /api/catalog/shelves/feed`
+  （带求值后的条目，`per_shelf` 默认 12、上限 100）
+- **新建与修改货架需要 `catalog.shelves.manage`**（管理台 `/api/admin/shelves`），普通用户不能自建货架
+- 登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 调整首页货架的**顺序与显隐**
+  （请求体 `{ order, hidden }`，slug 去空去重并按已启用货架校验，未知 slug 报 `unknown_shelf`）；
+  `/shelves/feed` 会按该偏好重排与隐藏
 
-虚拟货架将作品分类从“死板的物理目录树”转变为“**活的动态规则筛选器**”。
+## 3. 封面比例
 
-### 2.1 规则机制
-每个货架由一组标签规则定义：
-- `query_tags`：包含的标签集合（如 `["动画", "电影"]` 或 `["Hi-Res", "爵士"]`）
-- `require_all_tags`：`true` 表示必须同时满足全部标签（AND），`false` 表示满足任一标签（OR）
-- `exclude_tags`：排除的标签集合（NOT）
+封面比例是**展示建议**，不是强制约束：
 
-### 2.2 用户自定义货架与频道
-- 平台预设公共货架（如“剧场动画”、“无损专辑”、“精选小说”）；
-- 用户可在个人首页自由新建、配置自定义货架，并支持拖拽排版与一键公开分享。
+- **手动固定**：写实体属性 `attributes.cover_aspect`（`"1:1"` / `"2:3"` / `"3:4"`），有值就按它渲染
+- **自动推断**：留空时前端按封面图的自然比例，或按标签关键词推断惯例比例
+  （专辑 / 单曲 / OST → 1:1，电影 / 剧集 / 动画 → 2:3，小说 / 漫画 → 3:4）
+- **图片引用**：`pictures` 只保存引用（`url` + `caption` + `taken_at` + `source`），目录侧不抓取、不转存；
+  需要长期稳定的图片地址就用存储服务的 `GET /api/storage/assets/:id/content`
+- 常见比例：音乐 1:1、影视 2:3、书籍 3:4（见 [权威编目与元数据审查准则](/curation-guide)）
 
----
+## 4. 多语言本地化
 
-## 3. 封面自适应与多比例系统
+- 每个实体有 `original_language` 与 `translations`：后者是**按 locale 分组的对象**，
+  每个语种含 `title` / `summary` / `aliases`；原语言题名归它自己的语种行
+- 站内固定使用四种界面语言：`zh-CN`、`zh-TW`、`en-US`、`ja-JP`
+- 展示回退链：请求语言 → `en-US` → `original_language` → 实体基础字段（只影响展示，不回写数据）
+- 动态术语（实体类型、关系码、词表项、字段名）的多语言名称来自 definitions，
+  前端用现成 helper 解析，不硬编码
 
-MetaFusion 尊重各媒介载体的传统排版与艺术设计习惯，支持**自然宽高比自适应**与**精确比例控制**：
+## 5. 探索页与筛选
 
-### 3.1 比例标准
-- **方形 1:1**：音乐唱片、EP、原声大碟（OST）、单曲；
-- **竖向海报 2:3**：电影、电视动画、真人剧集海报；
-- **标准书页 3:4**：轻小说、单行本漫画、出版物、画集。
+`/explore` 与列表页共用 `GET /api/catalog/entities` 的一套参数：
 
-### 3.2 判定与覆盖机制
-1. **手动指定**：作品表记录 `works.cover_aspect`（如 `"1:1"`、`"2:3"`、`"3:4"`）。当用户显式指定时，严格按照指定比例渲染；
-2. **自动推断**：当 `cover_aspect` 为空时，前端根据作品的 `format` 标签自动推断典型比例；
-3. **自适应渲染**：组件支持平滑过渡，并在占位符阶段根据比例提前布局，杜绝布局抖动（CLS）。
+- **货架**：顶部可切换已启用的货架；
+- **关键词**：`q` 按标题与译文做子串匹配（见 [检索](/api-search)）
+- **多维过滤**：`kind` / `kinds` / `type` / `types` / `status` / `tags` /
+  `work_id` / `content_unit_id` / `release_id` / `medium_id` / `parent_id` / `field` + `value`
+- **排序**：列表默认按 `updated_at DESC, id`；按关联 id 查结构子项时按 `position` 升序
+  （当前没有「按热度」这类排序）
+- **分页**：`limit`（默认 50、上限 100）/ `offset`，响应带真实 `total`
 
----
+## 相关页面
 
-## 4. 多语言本地化体系 (Translations)
-
-MetaFusion 具备完整的国际化编目支持，所有主实体均通过 `_translations` 表保存各语种译名与简介：
-
-- **支持语种**：`zh-CN`（简体中文）、`zh-TW`（繁体中文）、`en-US`（英语）、`ja`（日语）、`ko`（韩语）等；
-- **主表与回退链**：
-  1. 主表的 `title` / `summary`（或 `name` / `biography`）作为默认语种基准；
-  2. 访问页面时通过界面顶部的语言切换器选择偏好语言；
-  3. 系统优先展示对应语种的精确翻译与本地化简介，未命中时平滑回退到默认语种与原文标题。
-
----
-
-## 5. 探索页与组合筛选指南
-
-在探索页面（`/explore`），你可以利用动态类型与标签体系快速发现感兴趣的内容：
-
-- **货架切换**：在页面顶部可直接切换不同的预设虚拟货架（如“剧场版动画”、“高解析音频专区”）或自己的自定义货架；
-- **标签组合筛选**：点击标签栏选择一个或多个标签，支持切换「同时满足（全部匹配）」或「满足其一（任一匹配）」模式；
-- **关键词搜索**：在搜索栏输入原名、中文名、外文别名或创作者名称，系统提供即时联想与全文检索；
-- **灵活排序**：支持按收录时间、浏览热度、首字母标题、发行日期等维度进行排序；
-- **开发者调用**：如需通过外部程序自动化检索或批量拉取货架与标签数据，请参阅 [实体查询与详情](/api-entities)。
+- [实体查询与详情](/api-entities)：完整的过滤参数与详情端点
+- [IFLA LRM 增强版实体模型](/frbr-model)：八类骨架与字段
+- [检索](/api-search)：关键词检索的匹配口径
