@@ -76,7 +76,7 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 | `draft` | 草稿（新建默认） |
 | `pending_review` | 待审（外部提案落在这里） |
 | `published` | 已发布；发布要求至少一条 `translations` |
-| `deleted` | 已退役 |
+| `deleted` | 已停用 |
 | `merged` | 已合并，`redirect_id` 指向保留实体 |
 
 每次写入都会落修订行（操作者、`edit_note`、`sources`、快照），用

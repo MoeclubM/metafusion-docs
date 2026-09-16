@@ -438,7 +438,8 @@ DELETE /api/auth/oauth-grants/{client_id}
 - **同意不记忆**：同一用户对同一非 trusted 客户端的每次授权都会重新渲染同意页，没有「已授权免再次确认」。
 - **终端用户可自查与自助撤回**（`GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2）；
   仍**没有** introspection 式的"撤销所有下游令牌"能力，撤回只影响本服务持有的第三方令牌。
-- **没有 introspection，也没有 RFC 7009 撤销端点**：不存在 `POST /api/oauth/revoke` 与 introspection 接口。
+- **撤销口径**：第三方撤销走终端用户自助撤回（`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2），
+  没有 RFC 7009 的 `POST /api/oauth/revoke`，也没有 introspection 接口。
   下游若用 JWKS 本地验签（无状态 JWT），撤销后只能等 TTL 自然过期（最长 15 分钟）；
   能即时生效的只有回本服务判定的路径——`userinfo` 以服务端存活令牌行为准，客户端被停用后连换码都会被拒。
 - **jti 注销集合是单实例内存实现**：即时的批量吊销只在处理该请求的那个实例内生效；

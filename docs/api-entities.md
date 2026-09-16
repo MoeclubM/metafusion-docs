@@ -9,8 +9,8 @@ group: "api"
 
 目录里所有实体（`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`）
 走同一套端点：**查询用 `GET /api/catalog/entities`，详情用 `GET /api/catalog/entities/:id`**。
-不存在按 kind 展开的旧路径（`/api/catalog/works`、`/catalog/artists/:id`、`/catalog/taxonomy`、
-`/catalog/relation-types` 等），也没有 `/api/browse/*` 与独立的图谱端点。
+八类 kind 共用这两个端点：按关联 id 过滤（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id`）
+或按 `kind` / `types` 过滤拿到子集，关系数据经 `/relations`、`/occurrences` 端点取。
 
 ## 列表与过滤
 
@@ -126,7 +126,7 @@ POST /api/catalog/expressions/details
 ## 分页
 
 - `limit` / `offset`；`limit` 默认 50、上限 100（越界静默按 50）
-- 列表响应带真实 `total`，可直接做页码；**不存在 `page` / `page_size` 参数**
+- 列表响应带真实 `total`，可直接做页码；分页只用 `limit` / `offset` 两个参数
 
 ## 相关页面
 

@@ -41,10 +41,10 @@ group: "guide"
 | `draft` | 草稿，仅创建者与持 `catalog.lifecycle.manage` 者可见 |
 | `pending_review` | 待审，仅创建者与持 `catalog.lifecycle.manage` 者可见 |
 | `published` | 已发布，公开可见（发布要求至少一条翻译行） |
-| `deleted` / `merged` | 已退役 / 已合并，仅创建者与持 `catalog.lifecycle.manage` 者直读；合并的用 `/resolve` 跟随 |
+| `deleted` / `merged` | 已停用 / 已合并，仅创建者与持 `catalog.lifecycle.manage` 者直读；合并的用 `/resolve` 跟随 |
 
-被退回时按审核意见补齐来源或修正结构后再提交。修正他人已发布条目需要编辑权限；
-合并与退役需要 `catalog.lifecycle.manage`。
+收到审核意见时，按意见补齐来源或修正结构后再提交。修正他人已发布条目需要编辑权限；
+合并与停用需要 `catalog.lifecycle.manage`。
 
 ## 4. 记录与权限
 

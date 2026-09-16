@@ -168,7 +168,7 @@ DELETE /api/developer/apps/:id
   `auth_rate_limit_enabled` / `auth_rate_limit_per_minute`，`false` 时不限流，改完立即生效）：`/api/auth/login`、`/api/auth/refresh`、
   `/api/auth/register`、`/api/setup`、`/api/oauth/authorize`、`/api/oauth/token`，以及开发者中心的
   `POST /api/developer/apps` 与 `POST /api/developer/apps/:id/rotate-secret`
-- 超限返回 `429` 与 `Retry-After`；**不存在全站 `X-RateLimit-*` 响应头，也不按 User-Agent 判定**
+- 超限返回 `429` 与 `Retry-After`；限流按 IP 与路由判定，响应头不带 `X-RateLimit-*` 系列
 
 ## 用令牌调用
 

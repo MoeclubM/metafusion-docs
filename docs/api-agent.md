@@ -135,7 +135,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | --- | --- | --- |
 | `catalog.entity.edit` | 维护公开条目，并维护自己创建的任意状态条目 | 不在路由上硬闸：`POST / PUT /api/catalog/entities` 只要求登录；无此码者只能写自己创建的 `draft` / `pending_review` |
 | `catalog.relation.edit` | 关系创建、替换与删除 | 硬闸：`POST /api/catalog/relations`、`PUT / DELETE /api/catalog/relations/:id` |
-| `catalog.lifecycle.manage` | 发布他人条目、退回、合并、退役 | 硬闸：`POST /api/catalog/entities/:id/lifecycle` |
+| `catalog.lifecycle.manage` | 发布/处置他人的未发布条目；合并与退役 | 合并/退役硬闸：`POST /api/catalog/entities/:id/lifecycle`；发布他人草稿走实体写入 `PUT`（同一权限码判定） |
 | `catalog.definitions.manage` | 定义版本与外部权威库管理 | 硬闸：`/api/admin/catalog-definitions`、`/api/admin/external-databases` |
 | `catalog.import.submit` | 外部导入预览与落库 | 硬闸：`POST /api/importer/preview`、`POST /api/importer/import` |
 | `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
@@ -144,7 +144,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 ## 4. 写入契约
 
-请求体统一是「实体/关系 + 版本 + 证据」三件套，不存在逐实体扁平字段的旧形状。
+请求体统一是「实体/关系 + 版本 + 证据」三件套：`{entity | relation, expected_version, edit_note, sources}`。
 
 ### 4.1 实体写入
 
@@ -156,7 +156,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | 不可变归属 | `kind` / `work_id` / `release_id` / `medium_id` 写入后不可改（`400 immutable_scope`）；换归属要重建实体 |
 | 结构归属 | `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`，否则 `400 parent_required`；`parent_id` 只能指向同域父节点 |
 | 收录声明 | 被 Track 收录的 Expression 所属 Work，必须在该 Release 的 `subjects` 里声明（`role` 取 `primary` / `compilation` / `supplement`），否则 `400 undeclared_release_subject` |
-| 状态 | 缺省 `draft`；`deleted` / `merged` 只能经生命周期端点写入（`400 use_lifecycle_endpoint`），已发布条目也不可经实体写入降级 |
+| 状态 | 缺省 `draft`，另有 `pending_review` / `published`；`deleted` / `merged` 只能经生命周期端点写入（`400 use_lifecycle_endpoint`）。生命周期端点只做合并与退役，请求体 `{target_id?, expected_version, edit_note, sources}` **没有 `action` 字段**；**已发布条目退回 `draft` 当前没有通道**（PUT 提交降级同样返回 `use_lifecycle_endpoint`），发布前请确认定稿 |
 | 发布 | `status=published` 要求至少一条 `translations`（`400 translation_required`），且所有结构引用的实体对匿名可见，即本身已发布 |
 | 证据 | `edit_note` 非空 + `sources` 至少 1 项，否则 `400 evidence_required` |
 
@@ -205,7 +205,7 @@ POST /api/catalog/entities/:id/lifecycle
 
 | 状态码 | `error` | 触发原因 | Agent 自愈动作 |
 | --- | --- | --- | --- |
-| 400 | `invalid_payload` | JSON 形状错误、含未知字段，或 body 后还有多余内容 | 按当前 DTO 重写载荷；不要提交旧契约字段 |
+| 400 | `invalid_payload` | JSON 形状错误、含未知字段，或 body 后还有多余内容 | 按当前 DTO 重写载荷；字段名以当前契约为准 |
 | 400 | `invalid_payload`（导入子类型：`has_release=true requires mediums` / `release requires mediums`） | 导入载荷声明了发行（`has_release=true`，或带了非空 `release`）却没有 `mediums` | 补 `mediums`；无载体发行改走 `link_mode=append_release_to_work` |
 | 400 | `unsupported_field_for_entity_type` / `invalid_entity_type` / `invalid_link_mode` | 导入载荷里声明了该 `entity_type` 没有落点的字段（如 `mediums[].media_category`、`release.cover_aspect`），或 `entity_type` / `link_mode` 越出允许枚举 | 删掉没有落点的字段或补上对应结构；枚举取 `work` / `artist` / `organization` / `character` 与 `new_work` / `append_release_to_work` / `create_relation`；预览与落库同一预检、零写入 |
 | 400 | `invalid_id` | 路径或结构字段里的 UUID 解析失败 | 用查重与详情响应里的真实 id |
@@ -215,7 +215,7 @@ POST /api/catalog/entities/:id/lifecycle
 | 400 | `invalid_reference` | 被引用实体不存在、kind 不符、对调用者不可见或已合并 | 先读该实体确认可见性；合并过的先用 `/resolve` 取当前身份 |
 | 400 | `constraint_violation` | 违反库内约束：跨 Work 的父子、跨 Release 的载体父子、唯一索引冲突 | 检查 `parent_id` 与 `position` 是否越过所属域 |
 | 400 | `immutable_scope` | 想改 `kind` / `work_id` / `release_id` / `medium_id` | 换归属要重建实体；重复建档走生命周期合并 |
-| 400 | `use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 改走 `POST /api/catalog/entities/:id/lifecycle` |
+| 400 | `use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 停用/合并改走 `POST /api/catalog/entities/:id/lifecycle`；退回 `draft` 没有可用通道，按勘误流程改字段重发 |
 | 400 | `translation_required` | 发布态一条 `translations` 都没有 | 至少补一个语种的翻译行再发布 |
 | 400 | `four_locale_names_required` | 定义 / 货架 / 外部库的名称缺语种（冒号后列出缺失项，如 `four_locale_names_required: zh-TW,ja-JP`） | 找齐四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`）后重提定义草稿；不要靠停用条目绕开校验 |
 | 400 | `parent_required` | 缺结构归属：`content_unit` / `expression` 缺 `work_id`、`medium` 缺 `release_id`、`track` 缺 `medium_id` | 补归属，或改到正确的层级提交 |

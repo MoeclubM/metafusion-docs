@@ -21,7 +21,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - **请求体**：JSON；未知字段一律拒绝（`400 invalid_payload`），体积上限 2 MiB
 - **响应**：统一 JSON；错误统一为 `{ "error": "<机器码>" }`
 - **限流**：目录服务只对少数重型读接口限流（见下，超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数）；
-  网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`**。全站都**不存在 `X-RateLimit-*` 响应头**
+  网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`**。全站的限流信号只有 `429` 与（目录侧路由限流带上的）`Retry-After`，响应头里不带 `X-RateLimit-*` 系列
 
 ## 能力分组
 
@@ -59,7 +59,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - 分页参数是 `limit` / `offset`：**`limit` 默认 50、上限 100，越界时静默按 50 处理**（不报错）
 - 列表响应为 `{ "items": [...], "total": <真实 COUNT> }`
 - 默认排序 `updated_at DESC, id`；按关联 id 查询结构子项（`release_id` / `medium_id` / `content_unit_id` / `parent_id`）时按 `position` 升序
-- 展开参数（MusicBrainz 的 `inc=`）与 `page` / `page_size` 分页都不存在：需要关联数据就分别调 `/relations`、`/occurrences` 或用关联 id 过滤
+- 关联数据用 `/relations`、`/occurrences` 或关联 id 过滤取得；分页参数只有 `limit` / `offset` 两个
 
 ## 限流
 
@@ -92,7 +92,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `invalid_reference` | 引用的实体不存在、kind 不符或对调用者不可见 |
 | 400 | `constraint_violation` | 违反库内约束（复合外键、唯一索引等） |
 | 400 | `immutable_scope` | 改动了不可变归属：`kind` / `work_id` / `release_id` / `medium_id` |
-| 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged` |
+| 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged`（停用与合并走生命周期端点；退回 `draft` 当前没有通道） |
 | 400 | `translation_required` | 发布时一条 `translations` 都没有 |
 | 400 | `four_locale_names_required` | 定义文档 / 货架 / 外部权威库里的名称缺语种：`error` 形如 `four_locale_names_required: zh-TW,ja-JP`，冒号后是缺失的语种 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段不存在 |
@@ -113,7 +113,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `draft` | 草稿（新建时的默认状态） | 创建者 + 持生命周期权限者 |
 | `pending_review` | 待审（外部提案落在这里） | 同上 |
 | `published` | 已发布，公开展示 | 所有人 |
-| `deleted` | 已退役 | 创建者可直读 |
+| `deleted` | 已停用 | 创建者可直读 |
 | `merged` | 已合并，`redirect_id` 指向保留实体 | 创建者可直读；用 `GET /api/catalog/entities/:id/resolve` 取到保留实体 |
 
 列表接口的可见性口径：匿名只看 `published`；登录用户看 `published` 加自己创建的全部条目；持 `catalog.lifecycle.manage` 看全量（`deleted` / `merged` 除外）。

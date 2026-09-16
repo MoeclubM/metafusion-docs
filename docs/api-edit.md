@@ -7,11 +7,9 @@ group: "api"
 
 # 新建与编辑
 
-目录写入只有一组端点：**实体用 `/api/catalog/entities`，关系用 `/api/catalog/relations`，
+目录写入只有三个入口：**实体用 `/api/catalog/entities`，关系用 `/api/catalog/relations`，
 合并 / 退役用 `/api/catalog/entities/:id/lifecycle`**。
-不存在按实体拆分的旧路径（`POST /api/catalog/works`、`PUT /api/catalog/artists/:id`、
-`PUT /api/catalog/entity-relations`、`POST /api/catalog/submit`、`POST /api/catalog/merge`），
-也没有「一次请求原子建完整条目链」的端点。
+按层级逐条写入，每次请求只落一条实体或一条关系。
 
 ## 前提：认证与权限码
 
@@ -21,7 +19,7 @@ group: "api"
 |---|---|
 | `catalog.entity.edit` | 创建与编辑实体（含维护公开条目） |
 | `catalog.relation.edit` | 创建 / 替换 / 删除关系 |
-| `catalog.lifecycle.manage` | 合并、退役，以及处置他人的未发布条目 |
+| `catalog.lifecycle.manage` | 合并、退役，以及发布/处置他人的未发布条目 |
 | `catalog.definitions.manage` | 起草、校验、发布动态定义 |
 | `catalog.import.submit` | 调用外部导入的预览与落库 |
 | `catalog.shelves.manage` | 维护货架规则 |
@@ -113,8 +111,10 @@ PUT /api/catalog/entities/:id
 - PUT 是**整实体替换**，不是局部 PATCH：先 `GET /api/catalog/entities/:id` 取回完整实体与 `version`，
   改完再整体写回（翻译、标签、`contents` 都可能整组替换）
 - `expected_version` 与当前版本不一致返回 `409 version_conflict`：重读后再写，不要盲目重试
-- 想把已发布条目降级，或直接写成 `deleted` / `merged`，会被 `400 use_lifecycle_endpoint` 拒绝
-- 发布（`status: "published"`）时至少要有一条 `translations`，否则 `400 translation_required`
+- **发布**就是 PUT 写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`
+- `deleted` / `merged` 走生命周期端点；PUT 提交这两个状态返回 `400 use_lifecycle_endpoint`
+- **已发布条目改回 `draft` 当前没有通道**：PUT 提交降级同样返回 `400 use_lifecycle_endpoint`，
+  生命周期端点也只做合并与退役。发布前请确认内容已定稿，内容有误时按勘误流程改字段重发，而不是退回重写
 
 ## 关系
 
@@ -139,9 +139,9 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 |---|---|
 | `invalid_relation_type` | 关系码不在已发布定义里，或该码已被停用 |
 | `invalid_endpoints` | 自己连自己，或两端 kind 不在该关系的 `source_kinds` / `target_kinds` 白名单 |
-| `invalid_endpoint_types` | 两端动态业务类型不满足该关系的类型白名单 |
-| `duplicate_relation` | 同类型、同端点、同 position、同属性的边已存在 |
-| `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming` |
+| `invalid_endpoint_types` | 两端动态业务类型不满足该关系的类型白名单（种子定义未配类型白名单，当前不适用） |
+| `duplicate_relation` | 同类型、同端点、同属性的边已存在（去重键不含 `position`） |
+| `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming`（种子定义未配基数上限，当前不适用） |
 | `relation_cycle` | 声明了 `acyclic` 的关系形成环路（如同类续作互指） |
 
 判重的去重键是「端点 + 类型 + 属性」（**不含 `position`**）：同一对端点、同一关系码、属性也完全相同、
@@ -178,7 +178,9 @@ POST /api/catalog/entities/:id/lifecycle
 - 两个动作的证据要求与实体写入一致：`edit_note` 非空 + 至少一条 `sources`，空数组会被
   `400 evidence_required` 拒绝；已 `deleted` / `merged` 的实体再调会返回 `400 invalid_status`
 - 合并后的旧 id 用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体
-- 两个动作都需要 `catalog.lifecycle.manage`；当前没有 `archived` 一类的中间状态
+- 两个动作都需要 `catalog.lifecycle.manage`；请求体是 `{target_id?, expected_version, edit_note, sources}`，
+  **没有 `action` 字段**——合并与退役由 `target_id` 有无决定，带 `{"action":"publish"}` 会 `400 invalid_payload`
+- 状态集合是 `draft` / `pending_review` / `published` / `deleted` / `merged` 五档，中间态只有待审一档
 
 ## 修订历史
 
@@ -202,7 +204,7 @@ GET /api/catalog/entities/:id/revisions
 - `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 bangumi），其它来源 `400 not_supported`
 - `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`
 - `link_mode` 取 `new_work`（默认）/ `append_release_to_work` / `create_relation`；
-  `merge_translations` 已被显式拒绝（需要补译名请走常规编辑）
+  `merge_translations` 会被显式拒绝，补译名走常规编辑
 - 落库前做零写入预检：属性值、未知字段码、`original_language`、翻译行与日期字段都按已发布定义校验，
   规则与实体写入一致；没有落库位置的载荷字段以 `unsupported_field_for_entity_type` 明确拒绝，不静默丢弃
 - 导入会拉取条目的演职员与角色：语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` /
@@ -212,8 +214,8 @@ GET /api/catalog/entities/:id/revisions
   原文快照里，不另造字段）；分集/篇目按上游分集端点落 `content_unit` 树；发行版的
   `edition_type` / `edition_batch` / `packaging` / `distribution_channel` 只在命中词表时写入，
   未命中时该维度留空而不是硬凑映射
-- **仍不导入**：上游的 work↔work 关系网（不抓 `/v0/subjects/{id}/subjects` 一类关联，只建署名与
-  角色关系），以及 `publisher` 实体引用（预览只有自由文本名称，不虚构 Agent 引用）
+- **导入范围**：只建署名与角色关系；上游的 work↔work 关系网（`/v0/subjects/{id}/subjects` 一类关联）
+  与 `publisher` 实体引用都在导入范围之外（预览只给自由文本名称，不虚构 Agent 引用）
 
 ## 实例间交换
 
