@@ -20,8 +20,8 @@ title ILIKE '%<q>%' OR (document->'translations')::text ILIKE '%<q>%'
 ```
 
 - 大小写不敏感的子串匹配（不是分词检索）：`攻壳` 能命中 `攻壳机动队`
-- `title` 侧由 `to_tsvector('simple', title)` 的 GIN 索引支撑；译文侧是整段 JSON 文本匹配，
-  没有索引支撑，数据量大时是顺序扫描
+- 标题列上另有一份 `to_tsvector('simple', title)` 的 GIN 索引，但 `ILIKE '%…%'` 这种前后都带通配的匹配用不上它；
+  译文侧更是把整段 JSON 转文本匹配，数据量大时是顺序扫描
 - 因此「按语言精确分词、按相关度排序的全文检索」当前**尚未实现**，`q` 保留的是「能搜到」的降级语义
 
 ## 接口

@@ -112,6 +112,12 @@ DELETE /api/developer/apps/:id
 同一个应用也可以由管理员在管理台 `/api/admin/oauth/clients` 下维护（按 `auth.oauth.manage` 授权，
 而开发者中心按归属授权）。密钥在库里只存哈希，之后无处可取，只能轮换。
 
+::: tip 部署现状
+账号服务已实现 `/api/developer/*`，但网关的生效矩阵（主仓库 `deploy/nginx.conf`）目前**没有把该前缀分流到账号服务**，
+请求会落到目录服务并返回 404。在补齐那条 location 之前，建接入方请走管理台的「OAuth 客户端」页签
+（`/api/admin/oauth/clients`）。
+:::
+
 ## 限流
 
 - 网关对 `/api/auth/` 与 `/api/setup` 按 IP 限 `5 r/s`（burst 10）；其余 `/api/` 前缀 `30 r/s`（burst 50）
