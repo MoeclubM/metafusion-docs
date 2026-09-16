@@ -12,9 +12,9 @@ group: "legal"
 ## 1. 收集的信息
 
 - **账户信息**：用户名、邮箱、密码哈希、邀请链 `invited_by`
-- **内容信息**：你提交的元数据、帖子、媒体文件的 `sha256` 与 `technical_specs`
-- **日志**：`admin_audit_logs` 记录 L1 写入与 `asset_files` 访问的 `actor/target/ip/ua/时间`
-- **技术信息**：访问日志（Nginx `access.log`）、限流计数（当前为进程内存，预留 Redis）、搜索关键词（当前 SQL，预留 OpenSearch）
+- **内容信息**：你提交的元数据与帖子；上传文件在存储服务中记录 `sha256`、大小、MIME、文件名与上传者
+- **日志**：元数据写入在 `catalog.revisions` 里留下操作者、编辑说明与快照；账号服务保存会话、邀请链与 OAuth 授权审计；服务与网关保留访问日志
+- **技术信息**：网关与服务访问日志、按 IP 的限流计数（进程内存，尚未接 Redis）
 
 ## 2. 使用目的
 
@@ -25,8 +25,8 @@ group: "legal"
 ## 3. 存储与保护
 
 - 密码仅存储哈希，令牌签名私钥（`AUTH_JWT_PRIVATE_KEY`）等敏感值通过环境变量注入，不落库明文
-- 原档与预览分桶存储，预签名 URL 2 小时过期
-- ES 默认 `xpack.security.enabled=false` 仅适用于本地；公网部署需开启认证或置于内网
+- 文件按内容寻址（sha256）存放于对象存储或本地目录，**不做转码、不生成预览副本**；下载预签名地址默认 120 分钟过期（`STORAGE_PRESIGN_TTL_MINUTES`）
+- 编排里的 OpenSearch 目前只是预留（`--profile search`），检索完全由 PostgreSQL 承担
 
 ## 4. 共享
 
@@ -40,7 +40,7 @@ group: "legal"
 
 ## 6. Cookie 与本地存储
 
-- 登录态存储于 `localStorage` 的 JWT，仅用于鉴权
+- 登录态是 HttpOnly Cookie `mf_session`（访问令牌 15 分钟，服务端会话兜底 24 小时），不落可被脚本读取的本地存储
 - 文档站主题偏好存储于 `localStorage`
 
 ## 7. 联系

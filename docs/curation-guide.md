@@ -1,297 +1,200 @@
 ---
 title: "权威编目与元数据审查准则"
-description: "MetaFusion 唯一最高编目哲学、LRM 五层实体体系、纯净实体题名、盒装合集规范、录音母版复用、拓扑 DAG 织网与审查巡检核验清单。"
+description: "纯净题名、分层建模、盒装合集、表达复用、DAG 织网与审查核验清单。"
 order: 12
 group: "guide"
 ---
 
-# MetaFusion 权威编目与元数据审查准则 (Curation & Review Guide)
+# MetaFusion 权威编目与元数据审查准则
 
-::: warning 文档与实现存在差异（一手提示）
-本准则的实体术语部分已过期：文中 **`CanonicalEntry` 实体不存在**，当前为固定八实体骨架 `agent / collection / work / content_unit / expression / release / medium / track`；`Artist` 应为 `agent` kind，`Franchise` 由 `collection` kind 与关系表达。可复用「表现」用 `Expression`，同作品目录用 `ContentUnit`，`Track` 经 `contents[].expression_id` 收录表达。
+本准则面向在本平台创建、修改、导入与审核元数据的社区考据员与 AI Agent。
+实体边界与发行版命名的权威来源是独立技能仓库
+[metafusion-skills](https://github.com/MoeclubM/metafusion-skills)（`metafusion-curator` +
+`lrm-catalog-standards`）；落地字段与端点见 [元数据目录教程](/catalog) 与
+[IFLA LRM 增强版实体模型](/frbr-model)（本页只讲原则与审查口径）。
 
-**权威实体边界与发行版命名请以独立技能仓库 [metafusion-skills](https://github.com/MoeclubM/metafusion-skills)（metafusion-curator + lrm-catalog-standards）及 [元数据目录教程](/catalog) 为准**；本页保留编目哲学、纯净题名、盒装与复用、DAG 织网等原则讲解。
-:::
+## 1. 角色设定与八条底线
 
-MetaFusion 是面向 ACG、影音与文献的全球化开放元数据与多媒介档案协作平台。本准则确立 MetaFusion 作为开放资源共建站点的**唯一最高数据编目哲学与审查准则**。所有在此平台中进行实体创建、元数据录入、多源导入、词条编辑、关系连接与审核巡检的社区考据员（Archivists）与 AI Agent，均须严格遵循此标准。
+- **角色定位**：`MetaFusion Archivist & Cataloging Reviewer`（档案考据员与编目审查员）
+- **使命**：消除信息孤岛与污染，构建结构化、可拓扑互联、带完整修订快照的跨媒介元数据
 
----
+八条底线：
 
-## 1. 角色设定与基本底线 (Role & Core Principles)
+1. **实体题名必须纯净**：作品层（`work`）不写季数、载体、规格、音质、字幕组等修饰词
+2. **发行规格只写实**：条码、厂牌、装帧等物理/数字出版特征落在发行版（`release`）与载体（`medium`）
+3. **创作内核与表现层分离**：作品层承载抽象创作（作词/作曲/原著/剧本原案），`expression` 承载具体表现
+   （录音母版、正片剪辑、章节正文及其演职），`track` 只承载载体上的收录位置
+4. **多作品盒装不许张冠李戴**：全集盒装必须独立建模为汇编作品与发行版，再分盘关联各母作品
+5. **世界观拓扑有向无环**：企划用 `collection` + `includes` 聚合，声明 `acyclic` 的关系不得成环
+6. **变更必须可溯**：每次写入都带 `edit_note` 与至少一条可核验的 `sources`
+7. **封面必须官方保真**：比例遵循 1:1 / 2:3 / 3:4，杜绝占位图、拉伸与盗链
+8. **多语言零硬编码**：`original_language` 与 `translations` 完整对齐，按固定回退链展示
 
-- **角色定位**：`MetaFusion Archivist & Cataloging Reviewer`（全站权威档案考据员与编目审查员）。
-- **使命目标**：消除信息孤岛与污染，构建高纯度、结构化、可拓扑互联、具备完整版本审计快照的跨媒介知识图谱。
-- **八大基本底线**：
-  1. **实体题名必须绝对纯净**：逻辑作品层（Work）严禁混入载体、分季、规格、音质等修饰词；
-  2. **发行规格必须真实唯一**：发行版（Release）承载物理/数字出版特征（条码、厂牌、装帧）；
-  3. **分层表现与创作内核严格分离**：Work 承载抽象创作（作词/作曲/原著作者/剧本原案），CanonicalEntry 承载典范表现形式（录音母版/正片剪辑/典范章节/连载话及其实演版权），Track 承载介质物理分轨/项；
-  4. **全集盒装严禁张冠李戴**：多作品大盒装（如 13BD 盒装）必须独立建模为汇编 Release 并分盘关联各母作品，严禁套在单部作品上；
-  5. **世界观拓扑有向无环**：Franchise 聚合跨媒介世界观，实体间构建 DAG 有向无环图，以 `qualifier` 细分同构多边；
-  6. **数据变更必须全程可溯**：每次写操作必须提供考据来源（`source_urls`）与动机说明（`edit_note`）；
-  7. **封面资产必须官方保真**：比例严格遵循 1:1 / 2:3 / 3:4，杜绝占位、拉伸与虚假盗链图；
-  8. **全栈多语言零硬编码**：`original_language` + `translations` 完整对齐，支持严格回退链。
+## 2. 分层建模：八类固定骨架
 
----
+| 层级 | 对应关系 | 边界 |
+|---|---|---|
+| `work` | 抽象创作本体 | 一部作品只有一个作品实体；季、卷、规格不进这层 |
+| `content_unit` | 同作品内的目录节点 | 第几章、第几话、某条路线；父子必须同属一个 `work` |
+| `expression` | 具体表现 | 属于一个 `work`，可选挂在 `content_unit` 下；版本差异与演职在这一层 |
+| `release` | 公开发行 | `subjects` 声明收录了哪些 `work`；条码与品番在这一层 |
+| `medium` | 载体容器 | 分盘分卷，可嵌套；不跨发行版 |
+| `track` | 收录位置 | `contents[].expression_id` 指向被收录的表达 |
+| `agent` | 责任主体 | 个人、团体、虚构角色；「谁做了什么」用关系表达 |
+| `collection` | 集合与企划 | 用 `includes` 聚合作品，不复制作品的身份 |
 
-## 2. 核心架构与 LRM 五层实体哲学 (The 5-Layer LRM Hierarchy)
+### 2.1 演职关系的落点
 
-MetaFusion 彻底废弃传统树状分类与硬编码 `media_type`，融合国际图书馆参考模型（IFLA LRM）与多媒介流媒体编目哲学，构建 **五层混合实体模型 + 四大核心枢纽**：
+- **作品层创作关系**：`created_by`、`composed_by`、`lyricist_of`、`written_by`（剧场动画、影视剧本、原著改编）
+- **表现层制作与演职**：`performed_by`（演唱/演奏）、`arranged_by`（编曲）、`directed_by`（导演/分集导演）、
+  `photographed_by`、`illustrated_by`（插画）、`narrated_by`（朗读/旁白）、
+  `voiced_by`（配音，角色经 `character` 引用实体）
+- **译本与改写**：`translated_by`（译者）、表达层之间用 `translation_of` / `revision_of`
+- **没有贴切职位码时**：用 `credit_for` 兜底，职位原文写进 `attributes.credit_role`；有精确码时不重复建边
 
-```
-[ Collection (世界观/企划枢纽) ] ─── includes ───┐
-                                                ▼
-[ Agent (责任主体: 创作者/机构) ] ─── credit_for / 精确职位码 ───► [ Work (逻辑作品概念层: 纯净题名) ]
-                                                       │
-                                                1:N    │ 抽象创作演化为具体表现
-                                                       ▼
-                                          [ CanonicalEntry (表现层 Expression: 典范条目/篇目) ]
-                                                       │
-                                                1:N    │ 商业发行包含 / 跨多 Release 复用
-                                                       ▼
-                                          [ Release (商业发行版本: 规格/厂牌/条码) ]
-                                                       │
-                                                1:N    │ 物理介质/分盘/分卷
-                                                       ▼
-                                            [ Medium (介质容器: Disc / Vol / Reel) ]
-                                                       │
-                                                1:N    │ 物理音轨/单集分轨/篇章条目
-                                                       ▼
-                                            [ Track (分轨/项: 序号/标题/时长/母版篇目关联) ]
-```
+### 2.2 表达复用与「Appears on Releases」
 
-### 2.1 五层实体职责与跨媒介表现层 (CanonicalEntry / Expression) 映射
+同一份录音、同一条正文被多个发行版收录时，全库只建 **1 个 `expression`**：
 
-| 实体层级 (Layer) | 对应 LRM / 体系概念 | 跨媒介自适应核心职责与边界 | 命名黄金准则 (Pure Title Rule) | 典型违规反例 (Strictly Forbidden) |
-|---|---|---|---|---|
-| **Work** | LRM-E1 / Work | 纯粹的艺术概念与思想创作本体，聚合跨语言、跨载体的创作思想（小说、漫画、动画、电影、音乐、游戏） | **仅保留最纯粹的原作主名**。<br>如《进击的巨人》、《范特西》、《流浪地球》、《三体》 | ❌ 包含“第1季”、“TV动画版”、“1080P”、“重制版”、“Vol.1”、“EP”、“OST” |
-| **CanonicalEntry** | LRM-E2 / Expression | 抽象 Work 的跨媒介具体创作表达：<br>• 🎵 **音乐**：典范录音/母版 (Recording/Master Track)<br>• 📚 **图书**：典范章节/标准正文篇目 (Chapter/Canonical Text)<br>• 🎬 **影视**：正片剪辑/分集母版 (Film Cut/Episode Master)<br>• 🎨 **漫画**：连载单话/篇章 (Story Chapter)<br>• 🎮 **游戏**：游戏本体/战役篇章 (Main Scenario/DLC) | **母版/篇目原始标准名**。<br>如《晴天 (Master Recording)》、《第1话：给二千年后的你》、《第1章：红月亮》 | ❌ 混入专辑名、混入光盘编号（如“Disc 1 Track 03”） |
-| **Release** | LRM-E3 / Manifestation | 商业发售实体、具体出版物、物理/数字封装规格（初版平装书、精装合订本、4K UHD 蓝光版、首版 CD、数字连载版） | **精准标明版本规格、卷次、出版方、装帧**。<br>如《范特西（首版CD，BMG唱片，2001）》、《三体 1（精装单行本，重庆出版社，ISBN 9787536692930）》 | ❌ 泛用模版复制（所有网文都写“网络连载版”）、缺少版本区分与条码 |
-| **Medium** | Medium / Disc / Volume | 物理/数字媒介容器（Disc 1 CD, Disc 2 Blu-ray, Vol.1, Reel 1） | **介质序数与载体名称**。<br>如 `Disc 1 (Feature BD)`、`Disc 2 (Bonus OST CD)`、`Vol.1` | ❌ 遗漏分盘、将多盘合为单盘导致音轨序号冲突 |
-| **Track** | Track / Offset | 特定 Medium 上的具体物理分轨/篇目项，精确关联具体 `CanonicalEntry` | **分轨序号 + 轨/项题名**。<br>如 `1. 爱在西元前 (03:43)`、`第1章：红月亮` | ❌ 序号颠倒、时长填 0、未绑定典范条目 |
+- 各发行版的 `track.contents[].expression_id` 指向它，数据位置是 `catalog.track_contents`
+- 反查接口是 `GET /api/catalog/entities/:id/occurrences`：`expression` 返回自身收录，
+  `content_unit` 返回该篇目下各表达的收录，`work` 返回该作品下全部表达的收录
+- 被收录表达所属的 `work` 必须出现在该发行版的 `subjects` 里（`undeclared_release_subject` 校验）
+- 同篇目的其它表达（另一录音、加长版）在批量端点里单列在 `siblings`，不与自身收录混同
+- 专辑曲序等「概念编排」用有序 `includes` 关系；**真正的版次顺序以 Medium 与 Track 收录为准**
 
----
-
-## 3. 抽象创作与表现层实现的严格分离与复用机制
-
-在全媒介编目中，必须严格区分 **Work 级抽象创作关系** 与 **CanonicalEntry 级具体表现实现关系**：
-
-```mermaid
-classDiagram
-    class Work {
-        +UUID id
-        +String title
-        +String original_language
-        +String cover_aspect
-        +Relations: composer, lyricist, author, scriptwriter
-    }
-    class CanonicalEntry {
-        +UUID id
-        +UUID work_id
-        +String title
-        +Int default_duration
-        +String isrc
-        +String isbn
-        +Relations: performer, arranger, producer, director, voice_actor, translator
-    }
-    class Track {
-        +UUID id
-        +UUID medium_id
-        +UUID canonical_entry_id
-        +Int position
-        +String title
-        +Int duration
-    }
-    class Release {
-        +UUID id
-        +UUID work_id
-        +String edition_name
-        +String barcode
-        +String catalog_number
-        +UUID publisher_id
-    }
-    Work "1" -- "0..*" CanonicalEntry : has expressions
-    Work "1" -- "0..*" Release : manifests as
-    CanonicalEntry "1" -- "0..*" Track : referenced by
-    Release "1" -- "1..*" Track : contains via Mediums
-```
-
-1. **Work 级创作关系**（抽象思想的原创作者）：
-   - `composed_by`（作曲者）、`lyricist_of`（作词者）、`created_by`（创作者）、`written_by`（编剧）；其余精确职位不在种子内时用 `credit_for` 兜底；
-   - **规则**：无论内容被谁演绎、翻唱或收录于何种载体，Work 的核心创作者恒定不变。
-2. **CanonicalEntry (Expression) 级演职与版权关系**（具体表现母版/篇目的实现者与权利人）：
-   - 音乐：`performed_by`（表演者/歌手/乐手）、`arranged_by`（编曲者）、`composed_by`（作曲者）、`lyricist_of`（作词者）；
-   - 影视/动画：`directed_by`（导演/分集导演）、`written_by`（编剧）、`voiced_by`（配音演员，角色经 `character` 引用）；
-   - 文学/漫画：`illustrated_by`（插画者）、`narrated_by`（朗读/旁白）、`translation_of`（译本表达关系）；
-   - 无贴切关系码的职位（制片人、企画、分镜等）：`credit_for` 承载，职位原文落 `credit_role`。
-3. **跨发行复用 (Expression Reuse) 与「Appears on Releases」反查原理**：
-   - 同一个具体的 `CanonicalEntry`（例如周杰伦《晴天》2001 原版母带、电影《千与千寻》院线正片母版、《三体》第一章正文）具有全局唯一 UUID；
-   - 它可以被多个不同 Release 的 Track 节点同时引用（例如：同一篇小说正文被初版平装书、精装合订本、Kindle 电子书同时引用；同一首母版录音被首版专辑 CD、精选集、黑胶复刻版同时引用）；
-   - 系统通过 `catalog.track_contents`（Track ↔ Expression）反查该篇目/母带在全库所有 Release 中的收录记录（Appears on Releases，API 为 `GET /api/catalog/entities/:id/occurrences`），消除冗余录入，建立全生命周期的版本流变拓扑。收录按实体 kind 解释：`expression` 只返回该表达自身的收录，`content_unit` 返回该篇目下各表达的收录，`work` 返回该作品下全部表达的收录；同篇目其它表达（如加长版、另一录音）单列在批量端点的 `siblings`，不与自身收录混同。
-
----
-
-## 4. 多作品全集与豪华盒装编目铁律 (Multi-Work Boxsets)
-
-对于收录多部独立长篇作品/电影的豪华盒装（如《宮崎駿監督作品集》13BD 盒装 `VWBS-1531`、新海诚电影全集 BOX 等）：
+## 3. 多作品盒装与合集
 
 ```
-[ Compilation Work: 宮崎駿監督作品集 ]
-                 │
-                 ▼ 物化发售
-[ Release: 宮崎駿監督作品集 (13BD 豪华限定盒装, VWBS-1531) ]
-   ├── Medium 1 (BD): 《鲁邦三世 卡里奥斯特罗之城》 ── Track 1 ──► [ Work: 鲁邦三世 卡里奥斯特罗之城 ]
-   ├── Medium 2 (BD): 《风之谷》               ── Track 1 ──► [ Work: 风之谷 ]
-   ├── Medium 7 (BD): 《幽灵公主》             ── Track 1 ──► [ Work: 幽灵公主 ]
-   ├── Medium 8 (BD): 《千与千寻》             ── Track 1 ──► [ Work: 千与千寻 ]
-   └── Medium 13 (Bonus BD): 特典光盘          ── Track 1..N ──► 关联特典母版
+[ 汇编 Work: 宮崎駿監督作品集 ]
+        │
+        ▼ 物化发售
+[ Release: 宮崎駿監督作品集（13BD 豪华限定盒装，VWBS-1531）]
+   ├── Medium 1 (BD): 鲁邦三世 卡里奥斯特罗之城 ── Track 1 ──▶ [ Work: 鲁邦三世 卡里奥斯特罗之城 ]
+   ├── Medium 2 (BD): 风之谷                     ── Track 1 ──▶ [ Work: 风之谷 ]
+   ├── Medium 8 (BD): 千与千寻                   ── Track 1 ──▶ [ Work: 千与千寻 ]
+   └── Medium 13 (BD): 特典盘                    ── Track 1..N ─▶ 特典表达
 ```
 
-### 4.1 核心铁律与防错准则
+1. **严禁混淆挂载**：不能把全集盒装的品番/条码挂到其中单部作品名下。
+   《千与千寻》只挂它自己的发行版（如 `VWBS-1530`），盒装 `VWBS-1531` 属于汇编
+2. **盒装展开步骤**：
+   - 建汇编 `work`（或聚合 `collection`）与它的 `release`
+   - 按实物建全部 `medium`（逐盘、标明格式）
+   - 各盘 `track` 的 `contents[].expression_id` 指向各母作品下对应的 `expression`
+   - `release.subjects` 声明全部被收录的 `work`
+   - 用 `includes` 关系把汇编作品与各母作品连起来
+   - 特典不属于盒内正片时用 `bonus_included_in` / `store_bonus_for` 表达，不要误建为盒内 Medium
 
-1. **严禁混淆挂载**：**绝对禁止将多作品合集盒装的品番/条形码直接挂载在其中单部单体作品名下**。
-   - ❌ 错误做法：将 13 碟全集盒装 `VWBS-1531`（包含 11 部电影 + 2 碟特典）当作《千与千寻》的单部电影发行版挂载。
-   - ✅ 正确做法：单部作品《千与千寻》只挂载其自身的单行本发行版（例如《千与千寻（日本官方初版蓝光，VWBS-1530，1 BD-50）》）。
-2. **盒装全展开 SOP**：
-   - 建立汇编作品或聚合 Release（如《宮崎駿監督作品集》）；
-   - 真实建立全部分盘 `Medium` 介质（Disc 1 至 Disc 13，各自标明格式 `Blu-ray`）；
-   - 各分碟的 `Track` 通过 `contents[].expression_id` 精准链接回各独立母体 `Work`（被收录表达所属 Work 必须列入该 Release 的 `subjects`）；
-   - 在图谱中建立 `includes` 边连接汇编作品与各母作品（当前无 `included_in` 关系码）。
+## 4. 企划聚合与拓扑约束
 
----
-
-## 5. 跨媒介世界观企划 Hub 与 DAG 拓扑图谱 (Franchise & DAG Topology)
-
-### 5.1 企划聚合原则与案例
-
-> 企划/世界观当前由 `collection` kind + `includes` 关系表达，无独立 `Franchise` 实体；下例中的 `Franchise` 字样仅沿用理论层称呼。
-
-以**《流浪地球》系列**与**《三体》系列**为例：
-
-```mermaid
-graph TD
-    F1[Collection: 流浪地球系列企划] -->|includes| W1[Work: 流浪地球 原著中篇小说]
-    F1 -->|includes| W2[Work: 流浪地球 电影第1部]
-    F1 -->|includes| W3[Work: 流浪地球2 电影第2部]
-    F1 -->|includes| W4[Work: 流浪地球 电影原声大碟]
-    
-    W2 -->|adaptation_of| W1
-    W3 -->|sequel_of| W2
-    W4 -->|soundtrack_of| W2
-    
-    A1[Agent: 刘慈欣] -->|created_by| W1
-    A2[Agent: 郭帆] -->|directed_by| W2
-    A2 -->|directed_by| W3
-    A3[Agent: 阿鲲] -->|composed_by| W4
-```
-
-### 5.2 核心关系边矩阵 (Relationship Matrix)
-
-> **关系码修正**：下表为当前 definitions 种子的实际关系码（运行时清单以 `GET /api/catalog/definitions` 为准）。旧版本页引用的 `part_of_franchise / creator_of / included_in / crossover_with / prequel_of / spin_off_of / expansion_of / remake_of / member_of / voice_actor_of / imprint_of / real_counterpart_of / alternate_form_of / phonographic_copyright` **均不存在**。
-
-| 关系代码 (`type`) | 中文谓词 | 语义方向与定义 | 实际源/宿端 kind | 说明与约束 |
-|---|---|---|---|---|
-| `includes` | 组成包含 / 组成属于 | Source 聚合或包含 Target | collection/work → work/collection | 企划聚合与嵌套，有向无环 |
-| `adaptation_of` | 改编自 | Source 为 Target 的跨媒介改编作品 | work → work | 漫改动画、小说改电影等，有向无环 |
-| `sequel_of` | 续作于 | Source 为 Target 的续篇 | work → work | 严格单向，有向无环 |
-| `soundtrack_of` | 配乐用于 | Source（音乐 Work）为 Target（影视/游戏 Work）的配乐 | work → work | 音乐专辑指向影视/游戏 |
-| `translation_of` / `revision_of` / `cover_of` / `alternate_take_of` | 翻译自 / 修订自 / 翻唱自 / 别版取自 | 表达层派生 | expression → expression | 译本、修订、翻唱、别版，均有向无环 |
-| `pressing_of` | 再版自 | Source 版次承自 Target | release → release | 版次链，有向无环 |
-| `character_in` | 角色登场 | Source 角色/团体登场于 Target | agent → work/collection | 与署名关系方向相反；番位落 `role`，原文落 `credit_role`；同一角色跨作品多条边 |
-| `credit_for` | 参与制作 | 通用署名兜底 | work/content_unit/expression/release → agent | 无贴切职位码时使用，职位原文落 `credit_role`；有精确码时不重复建边 |
-| `bonus_included_in` / `store_bonus_for` | 特典收录于 / 渠道特典归属 | 特典与渠道归属 | expression → release/medium；expression/release → agent | 有向无环 |
-
-署名类关系（`created_by / performed_by / composed_by / lyricist_of / arranged_by / directed_by / written_by / illustrated_by / narrated_by / voiced_by / photographed_by / modeled_by / developed_by`）统一为 work/content_unit/expression/release → agent。成员/团体、现实对照、角色形态变体等旧概念当前没有专用关系码；如需新增，应经 DefinitionsEditor 草稿→影响→发布添加，不改代码。
-
-### 5.3 拓扑约束与多边区分
-
-1. **DAG 有向无环图**：全站作品关系图谱必须严格为 DAG，写操作前必须执行深度优先环路检测（DFS Cycle Detection），严禁自环与长回环。
-2. **多边语义限定**：同一对实体间存在同类多条关系时，用边属性标注语种、版本或角色，严禁为此重复拆分实体：
-   - 声优配音：多条 `voiced_by`（work → agent），`character` 引用角色实体，`language` / `context` 区分语种与适用篇目；
-   - 角色登场：同一角色跨作品用多条 `character_in`（agent → work），`role` 记主角/配角/客串，原文番位落 `credit_role`。
-
----
-
-## 6. 封面自然宽高比与官方保真实体标准 (Cover Standards)
-
-MetaFusion 废弃传统固定方形拉伸，采用**自然宽高比黄金标准**：
+企划/世界观由 `collection` + `includes` 表达（没有独立的「世界观」实体）。以系列为例：
 
 ```
-       [ 1:1 ]                   [ 2:3 ]                  [ 3:4 ]
-┌──────────────────┐      ┌──────────────────┐     ┌──────────────────┐
-│                  │      │                  │     │                  │
-│   Music / OST    │      │   Movie / Anime  │     │   Book / Comic   │
-│   (Square Album) │      │  (Vertical Poster│     │  (Standard Book) │
-│                  │      │                  │     │                  │
-└──────────────────┘      │                  │     │                  │
-                          └──────────────────┘     └──────────────────┘
+[ Collection: 流浪地球系列 ] ──includes──▶ Work: 流浪地球（原著小说）
+        │                        │
+        │                        ├──includes──▶ Work: 流浪地球（电影第 1 部）
+        │                        └──includes──▶ Work: 流浪地球 2（电影第 2 部）
+        │
+        └── 内容关系：电影 1 ──adaptation_of──▶ 原著小说
+                     电影 2 ──sequel_of────▶ 电影 1
+                     原声大碟 ─soundtrack_of▶ 电影 1
+        └── 署名关系：刘慈欣 ─created_by─▶ 原著小说；郭帆 ─directed_by─▶ 电影 1/2；阿鲲 ─composed_by─▶ 原声
 ```
 
-### 6.1 媒介画幅匹配表
+### 4.1 关系码矩阵（以 `GET /api/catalog/definitions` 为准）
 
-| 媒介形态 (Media Form) | 强制画幅 (`cover_aspect`) | 推荐最低分辨率 | 官方权威源与鉴伪标准 |
+| 关系码 | 中文谓词 | 方向与端点 | 约束 |
 |---|---|---|---|
-| **音乐唱片 / OST / 单曲** | `"1:1"` | ≥ 1400 × 1400 px | 官方 CD 扫描、Apple Music / Tidal 无损母带封面、MusicBrainz Cover Art Archive。杜绝内嵌小图拉伸。 |
-| **电影 / TV动画 / 纪录片** | `"2:3"` | ≥ 1000 × 1500 px | 官方首发宣发海报、院线日版 B2/美版 One-Sheet 海报、TMDB 高分海报。杜绝剧照截图与文字遮挡图。 |
-| **图书 / 轻小说 / 漫画** | `"3:4"` | ≥ 1200 × 1600 px | 出版社官网高清封面、ISBN 官方归档、Amazon 原装高清单行本封面。杜绝倾斜实拍、带腰封折痕图。 |
+| `includes` | 组成包含 / 组成属于 | collection/work → work/collection | 企划聚合与嵌套，有向无环，声明为聚合关系 |
+| `adaptation_of` | 改编自 | work → work | 跨媒介改编，有向无环 |
+| `sequel_of` | 续作于 | work → work | 严格单向 |
+| `spin_off_of` | 外传自 | work → work | 有向无环 |
+| `soundtrack_of` | 配乐用于 | work → work | 音乐作品指向影视/游戏 |
+| `translation_of` / `revision_of` / `cover_of` / `alternate_take_of` | 翻译自 / 修订自 / 翻唱自 / 别版取自 | expression → expression | 表现层派生，有向无环 |
+| `pressing_of` | 再版自 | release → release | 版次链，有向无环 |
+| `character_in` | 角色登场 | agent → work/collection | 同一角色跨作品多条边；番位写 `attributes.character_rank` 词表项 |
+| `credit_for` | 参与制作 | work/content_unit/expression/release → agent | 通用署名兜底，原文写 `credit_role` |
+| `member_of` | 所属团体 | agent → agent | 个人与团体，有向无环 |
+| `bonus_included_in` | 特典收录于 | expression → release/medium | 有向无环 |
+| `store_bonus_for` | 渠道特典归属 | expression/release → agent | 有向无环 |
 
-### 6.2 官方保真与防伪 SOP
+署名类关系（`created_by` / `performed_by` / `composed_by` / `lyricist_of` / `arranged_by` /
+`directed_by` / `written_by` / `illustrated_by` / `narrated_by` / `voiced_by` /
+`photographed_by` / `modeled_by` / `developed_by` / `translated_by`）统一为
+work/content_unit/expression/release → agent。需要新关系码时，走后台 Definitions 的
+草稿 → 影响面校验 → 发布，而不是改代码。
 
-1. **杜绝占位与虚假图**：严禁上传纯色图、404 占位图、带“暂无图片”水印的过渡图；
-2. **严禁非官方同人图**：作品主封面必须为官方商业出版物或宣发原物料；
-3. **平台持久化托管**：外部图片必须转存至系统 S3/RustFS 对象存储，严禁直接外链易失效防盗链图床。
+### 4.2 多边区分
 
----
+同一对实体存在同类多条关系时，用边属性区分，不要为它拆实体：
 
-## 7. 全栈多语言回退链与不可篡改审计流 (i18n & Audit Trail)
+- 声优配音：多条 `voiced_by`，`character` 引用角色实体，`language` / `context` 区分语种与适用篇目
+- 角色登场：同一角色跨作品用多条 `character_in`，番位落 `character_rank`，原文落 `credit_role`
+- 服务端按「端点 + 类型 + 属性 + position」判重，不按人名去重；声明 `acyclic` 的关系写入前会做环路检测
 
-### 7.1 多语言本地化零硬编码原则
+## 5. 封面保真
 
-1. **实体多语言表与回退链**：
-   - 实体标明 `original_language`（如 `ja`, `zh-CN`, `en`）；
-   - `work_translations`、`artist_translations`、`franchise_translations` 录入多语言本地化题名与简介；
-   - 回退解析顺序：`请求语言 (User Locale)` -> `英文 (en-US)` -> `原产语言 (original_language)` -> `默认系统兜底`；
-   - 本体标签（`tags`）与术语必须具备多语言 `display_names JSONB`。
-2. **前端 UI 零硬编码**：
-   - 前端所有可见文本必须由 `frontend/src/messages/{zh-CN,en-US}.json` 字典驱动；
-   - 严禁 `t("key") || "硬编码中文"` 的反向硬编码写法。
+| 媒介形态 | `cover_aspect` | 建议最低分辨率 | 可用来源 |
+|---|---|---|---|
+| 音乐唱片 / OST / 单曲 | `"1:1"` | ≥ 1400 × 1400 px | 官方数字版封面、Cover Art Archive |
+| 电影 / TV 动画 / 纪录片 | `"2:3"` | ≥ 1000 × 1500 px | 官方宣发海报、院线海报 |
+| 图书 / 轻小说 / 漫画 | `"3:4"` | ≥ 1200 × 1600 px | 出版社官网、ISBN 官方归档图 |
 
-### 7.2 不可篡改审计流 (Immutable Revision Log)
+1. 杜绝纯色占位图、404 图、带「暂无图片」水印的过渡图
+2. 作品主封面必须是官方商业出版物或宣发物料，不用同人图
+3. 目录侧的 `pictures` 只保存**引用**（URL + 出处），服务端不抓取、不转存；
+   需要长期稳定可引用的图片地址时，把文件交给存储服务后用
+   `GET /api/storage/assets/:id/content`（对象存储的预签名地址会过期，不适合长期引用）
 
-每次通过 API、脚本或后台进行的写操作，后端均在同一事务中写入版本快照（`entity_revisions`）与操作审计日志（`admin_audit_logs`）。客户端必须提供：
-- `edit_note`：清晰阐明本次修改的考据动机与变更内容；
-- `source_urls`：至少 1 条可供审查员查证的官方/权威考据链接。
+## 6. 多语言与证据
 
----
+### 6.1 翻译与回退
 
-## 8. 编目审查与数据质检核验清单 (QA Review Checklist)
+- 实体写明 `original_language`（如 `ja` / `zh-CN` / `en-US`）
+- `translations` 是按 locale 分组的对象，每个语种含 `title` / `summary` / `aliases`；
+  原语言题名归它自己的语种行，不塞进实体级别的别名
+- 展示回退链：请求语言 → `en-US` → `original_language` → 基础字段（只影响展示，不回写数据）
+- 动态术语（类型、字段、词表项、关系码）的多语言名称来自 definitions，前端不硬编码；
+  UI 文案走四个语种字典 `frontend/src/messages/{zh-CN,en-US,zh-TW,ja-JP}.json`
 
-在每次提交或审核时，审查员与自动化 Agent 必须逐项核对以下清单：
+### 6.2 修订与证据
 
-### 8.1 纯净题名污染黑名单
-- [ ] 检查 Work 题名是否包含：`TV(动画)?`、`剧场版`、`OVA`、`OAD`、`第[0-9]季`、`Season`、`Vol`、`1080P`、`4K`、`UHD`、`Hi-Res`、`FLAC`、`初回限定`、`字幕组`。若包含，必须剥离并归入 Release / Medium。
+每次写入都会在 `catalog.revisions` 落一行（操作者、说明、来源、快照），并写一条 outbox 事件；
+客户端必须提供：
 
-### 8.2 盒装与合集审查
-- [ ] 确认单部作品 Release 上的 `catalog_number` 与 `barcode` 为独立单行本（如千与千寻为 `VWBS-1530`），严禁挂载全集盒装品番（如 `VWBS-1531`）；
-- [ ] 盒装合集 Release 分盘 Medium 数量与官方实物一致，Track 精确回溯关联至母作品。
+- `edit_note`：说清本次修改的依据与范围（服务端只要求非空）
+- `sources`：至少一条，每项为 `{ kind, citation, url }`，`kind` 取 `url` / `publication` / `self`；
+  没有来源就没法核对，也拿不到 `400 evidence_required` 之外的宽容
 
-### 8.3 编码与标识符校验
-- [ ] 图书 Release 的 `barcode` 必须通过 ISBN-13 模 10 校验；
-- [ ] 唱片编号 `catalog_number` 格式规范（如 `VICL-60017`），无自定义口语化文本。
+## 7. 审查核验清单
 
-### 8.4 封面画幅与质量
-- [ ] `cover_aspect` 与实际像素宽高比误差 ≤ 5%（音乐 1:1、影视 2:3、书籍 3:4）；
-- [ ] 分辨率达标，无盗链水印，无占位图。
+### 7.1 纯净题名
+- [ ] 作品题名是否混入 `TV(动画)?`、`剧场版`、`OVA`、`OAD`、`第[0-9]季`、`Season`、`Vol`、
+      `1080P`、`4K`、`UHD`、`Hi-Res`、`FLAC`、`初回限定`、`字幕组`？命中就剥离到发行版与载体
+      （这是审查口径，服务端不做自动拦截）
 
-### 8.5 图谱 DAG 与多语言
-- [ ] 作品关系图谱保持严格有向无环（无自环、无双向死循环）；
-- [ ] `original_language` 明确，提供多语言对齐；
-- [ ] `edit_note` 明确详尽（≥ 10 字符），`source_urls` 包含权威考据源。
+### 7.2 盒装与合集
+- [ ] 单部作品的 `catalog_number` / 条码是否为该单品的，而不是全集盒装的
+- [ ] 盒装的分盘数量与实物一致，每个 Track 是否指回正确的母作品表达
+- [ ] `release.subjects` 是否覆盖全部被收录的 `work`
 
----
+### 7.3 标识符
+- [ ] 图书条码是否通过 ISBN-13 校验位验算
+- [ ] 唱片编号 `catalog_number` 是否按官方形态书写（如 `VICL-60017`），不用口语化文本
 
-## 9. 延伸阅读与开发协作
+### 7.4 封面
+- [ ] `cover_aspect` 与实际宽高比是否一致（音乐 1:1、影视 2:3、书籍 3:4）
+- [ ] 分辨率是否达标、无盗链水印、无占位图
+
+### 7.5 图谱与多语言
+- [ ] 声明 `acyclic` 的关系没有自环或双向回环
+- [ ] `original_language` 明确，多语言行齐备且原语言行存在
+- [ ] `edit_note` 说清依据，`sources` 至少一条且可访问
+
+## 8. 延伸阅读
 
 - [AI Agent 接入与自动化编目协作指南](/agent-integration)
 - [IFLA LRM 增强版实体模型](/frbr-model)
 - [分类体系与动态标签](/taxonomy)
-- [词条写入与合并 API](/api-edit)
+- [新建与编辑（写入 API）](/api-edit)

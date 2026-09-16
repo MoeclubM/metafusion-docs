@@ -10,18 +10,18 @@ group: "meta"
 ## 站务
 
 - **GitHub**：[MoeclubM/MetaFusion](https://github.com/MoeclubM/MetaFusion)（提 Issue / PR 最快）
-- **站内私信**：登录后在站务账号主页点击「发送私信」，或在社区发帖时 @站务
-- **社区板块**：在 `/community` 的 `casual` 或 `announcement` 下发帖，标题前缀 `[反馈]` / `[合规]` 便于分拣
+- **社区板块**：在 `/community` 发布话题（平台当前不提供站内私信）——`bug_report`（反馈与建议）用于问题与合规报告、`qa`（求助答疑）用于使用与编目问题、`casual`（闲聊杂谈）用于其它交流
+- **公告板块**：`announcement` 由站务发布通知，不开放日常发帖
 
 ## 报告问题
 
 | 类型 | 去哪 |
 |---|---|
-| 侵权 / 合规 | 社区私信站务 + 附 URL 与权属证明（见 [版权与 DMCA](/copyright)） |
-| 审核申诉 | 站内私信，附 Work/Release ID 与修订记录 |
+| 侵权 / 合规 | 在 `bug_report` 板块发帖，附 URL 与权属证明（见 [版权与 DMCA](/copyright)） |
+| 审核申诉 | 在 `bug_report` 板块发帖，附 Work/Release ID 与修订记录 |
 | Bug / 功能建议 | GitHub Issue，附复现步骤与截图 |
 | 文档错误 | 到 [metafusion-docs](https://github.com/MoeclubM/metafusion-docs) 提 PR 直接改 `docs/*.md` |
-| 其它合作 | 站内私信站务账号 |
+| 其它合作 | GitHub Issue，或在 `casual` 板块发帖 |
 
 ## 贡献文档
 

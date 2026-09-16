@@ -54,7 +54,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 写入与审核
 
-运行时结构见 `/api/openapi.json`，动态代码见 `/api/catalog/definitions`。先查询 `/api/auth/me` 核对角色。
+运行时结构见 `/api/openapi.json`，动态代码见 `/api/catalog/definitions`。写入前先查 `/api/auth/me`，确认令牌里的权限码（`catalog.entity.edit` 等）——授权判定走权限码，不看角色名。
 
 ```json
 {
