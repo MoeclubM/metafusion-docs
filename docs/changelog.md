@@ -7,17 +7,29 @@ group: "meta"
 
 # 更新日志
 
+## 2026-09-16 — 文档按实现校正
+
+概览、快速上手、FAQ、社区指南与首页文案按代码实现重新核对，收掉一批从未落地的能力表述：
+
+- **认证**：不再出现个人访问令牌（`mfp_` 前缀）与 `X-API-Key`；程序化接入统一以会话令牌（`mf_session` Cookie 或 `Authorization: Bearer`，访问令牌 15 分钟 + 服务端会话 24 小时）与 OAuth 2.0 授权码为准；
+- **检索**：统一为 `GET /api/catalog/entities` 的 `q`（标题与译文的子串匹配），不再宣称 MusicBrainz 兼容 API 层、独立检索端点、罗马音匹配、即时联想或分词与相关度排序；分页为 `limit` / `offset`；
+- **限流**：改为实际口径——目录服务按 IP + 路由的路由级限流，网关按前缀 30 r/s（`/api/auth/`、`/api/setup` 5 r/s，`/api/storage/` 不限流），超限 `429` + `Retry-After`；不再声称按登录状态区分的全站配额或 `X-RateLimit-*` 响应头；
+- **互动服务**：板块按服务端实际播种的六类（站点公告、闲聊杂谈、求助答疑、考据评注、反馈与建议、评论专用）描述，删除不存在的私聊功能与未实现的发帖频控承诺；
+- **资源**：下载受绑定实体可见性约束、只分发原始文件（不做转码与在线播放），与本页 2026-08 早期的记录一致；
+- **权限**：能力表按权限码对齐（实例设置、权限组与用户、邀请码、OAuth 客户端、类型与关系定义、货架与外部库规则、编目审核与合并）。
+
 ## 2026-09-05 — 架构与插件系统规范对齐
 
-- 深度梳理与净化系统文档，全面以代码实现为单一事实源：
-  - 明确 12 个原生内置插件矩阵（`musicbrainz`, `tmdb`, `imdb`, `bangumi`, `vndb`, `douban`, `picard_exporter`, `jsonld_exporter`, `bibtex_exporter`, `acoustid_helper`, `ai_enrichment`, `webhook_notifier`）；
-  - 详细阐明 DAG 拓扑依赖、Semver 版本约束、DFS 防环检测与级联启停保护机制；
+- 深度梳理与净化系统文档，以代码实现为单一事实源：
+  - 记录插件矩阵的设计蓝图（`musicbrainz`, `tmdb`, `imdb`, `bangumi`, `vndb`, `douban`, `picard_exporter`, `jsonld_exporter`, `bibtex_exporter`, `acoustid_helper`, `ai_enrichment`, `webhook_notifier`）与 DAG 拓扑依赖、Semver 版本约束、DFS 防环检测、级联启停保护的设计约定；
   - 修正文档站静态生成引擎架构说明（VitePress SSG + sirv-cli 高性能分发）。
+
+> 这批插件当时只是蓝图，随后没有落地：单体侧的模块层（`modules` / `moduleapi` / `moduledeps`）随子系统拆分退役，蓝图中的插件矩阵没有随之实现，相关能力改由各独立服务按需要承载。
 
 ## 2026-08-21 — 文档站 v1.0
 
 - 独立文档站上线
-- 内容：概览、理念、快速开始、FRBR 五级、分类体系、编辑/投稿/上传、API 全教程（Auth/Lookup/Browse/Search/Edit/Storage/Agent）、社区、服务条款、隐私、版权、联系、FAQ
+- 内容：概览、理念、快速开始、FRBR 五级、分类体系、编辑/投稿/上传、API 教程（认证、实体查询与检索、写入、存储、Agent）、社区、服务条款、隐私、版权、联系、FAQ
 - 文档站内全文检索（标题 + 摘要），移动端抽屉式目录
 - 搜索：文档站内本地全文检索（标题+摘要），支持移动端抽屉
 
@@ -28,6 +40,7 @@ group: "meta"
 
 ## 2026-08 早期
 
-- FRBR 编目、PB 级双轨存储、HLS/音频/图书转码、邀请链、Asynq Worker、ES 检索与 SQL 降级、PAT（`mfp_`）与 WS/2 兼容 API 落地
+- 落地：FRBR 编目、原始文件存储（本地对象模式与 S3 对象存储、sha256 内容寻址）、邀请机制与实例准入设置
+- 当时一并规划、但**最终没有落地**的能力：HLS / 音频 / 图书转码、Asynq 异步 Worker、Elasticsearch 检索与 SQL 降级、个人访问令牌（`mfp_` 前缀）与 MusicBrainz 兼容 API 层。这些方向后来按实现收敛：检索走 PostgreSQL 子串匹配，认证以会话令牌 + OAuth 2.0 为准，存储只收原始文件并原样分发。
 
 > 文档内容随主站版本同步更新；本仓库是文档的唯一源，编辑请提 PR 至 `docs/`。
