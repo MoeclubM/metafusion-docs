@@ -1,6 +1,6 @@
 ---
 title: "资源收录与投稿标准"
-description: "MetaFusion 媒体资源收录流程、文件格式规范与审核机制。"
+description: "MetaFusion 媒体资源收录流程、文件格式建议与审核机制。"
 order: 21
 group: "guide"
 ---
@@ -32,14 +32,16 @@ group: "guide"
 
 上传时客户端本地算 SHA-256：库里已有同一份内容即秒传（内容寻址），不重复占空间。
 
+格式建议是编目口径：服务端**不按扩展名或 MIME 拦截**，只校验声明的大小与回读重算的内容哈希。
+
 ## 3. 条目状态
 
 | 状态 | 含义 |
 |---|---|
-| `draft` | 草稿，仅创建者可见 |
-| `pending_review` | 待审，仅创建者与持审核权限者可见 |
+| `draft` | 草稿，仅创建者与持 `catalog.lifecycle.manage` 者可见 |
+| `pending_review` | 待审，仅创建者与持 `catalog.lifecycle.manage` 者可见 |
 | `published` | 已发布，公开可见（发布要求至少一条翻译行） |
-| `deleted` / `merged` | 已退役 / 已合并，仅创建者可直读；合并的用 `/resolve` 跟随 |
+| `deleted` / `merged` | 已退役 / 已合并，仅创建者与持 `catalog.lifecycle.manage` 者直读；合并的用 `/resolve` 跟随 |
 
 被退回时按审核意见补齐来源或修正结构后再提交。修正他人已发布条目需要编辑权限；
 合并与退役需要 `catalog.lifecycle.manage`。

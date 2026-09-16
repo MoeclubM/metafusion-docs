@@ -37,8 +37,8 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
   "names": { "zh-CN": "剧场动画", "zh-TW": "劇場動畫", "ja": "劇場アニメ", "en-US": "Theatrical anime" },
   "query": {
     "types": ["animation"],
-    "fields": { "format": ["movie"] },
-    "vocab_terms": { "genre": ["fantasy"] },
+    "fields": { "country": ["JP"] },
+    "vocab_terms": { "format": ["bd"] },
     "relations": ["adaptation_of"]
   },
   "sort": "updated",
@@ -49,21 +49,24 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 ```
 
 - `query` 的四个子条件是 **AND**，同一个数组内是 **OR**；空 `query` 表示收录全部已发布作品
-- 公开读端点：`GET /api/catalog/shelves`（规则）与 `GET /api/catalog/shelves/feed`
+- 公开读端点：`GET /api/catalog/shelves`（只返回已启用的规则）与 `GET /api/catalog/shelves/feed`
   （带求值后的条目，`per_shelf` 默认 12、上限 100）
 - **新建与修改货架需要 `catalog.shelves.manage`**（管理台 `/api/admin/shelves`），普通用户不能自建货架
 - `names` 与其它定义名称同一条硬约束：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`，缺一项返回 `400 four_locale_names_required`
 - 登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 调整首页货架的**顺序与显隐**
-  （请求体 `{ order, hidden }`，slug 去空去重并按已启用货架校验，未知 slug 报 `unknown_shelf`）；
+  （请求体 `{ order, hidden }`，slug 去空去重，并按货架 slug 白名单校验——已停用但未删除的货架也算有效，
+  未知 slug 报 `unknown_shelf`）；
   `/shelves/feed` 会按该偏好重排与隐藏
 
 ## 3. 封面比例
 
 封面比例是**展示建议**，不是强制约束：
 
-- **手动固定**：写实体属性 `attributes.cover_aspect`（`"1:1"` / `"2:3"` / `"3:4"`），有值就按它渲染
-- **自动推断**：留空时前端按封面图的自然比例，或按标签关键词推断惯例比例
+- **推断来源**：前端按封面图的自然比例，或按标签关键词推断惯例比例
   （专辑 / 单曲 / OST → 1:1，电影 / 剧集 / 动画 → 2:3，小说 / 漫画 → 3:4）
+- **没有可写的手动比例字段**：`cover_aspect` 不在 definitions 里声明，实体属性只接受已声明字段，
+  写 `attributes.cover_aspect` 会被 `unknown_field` 拒绝；目录服务的实体响应里也没有 `cover_aspect`。
+  （封面组件保留了接收手动比例的能力，但当前没有写入路径给它值。）
 - **图片引用**：`pictures` 只保存引用（`url` + `caption` + `taken_at` + `source`），目录侧不抓取、不转存；
   需要长期稳定的图片地址就用存储服务的 `GET /api/storage/assets/:id/content`
 - 常见比例：音乐 1:1、影视 2:3、书籍 3:4（见 [权威编目与元数据审查准则](/curation-guide)）

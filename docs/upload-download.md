@@ -14,10 +14,13 @@ MetaFusion 只做**受控分发**：上传的是原始文件，下载回的也�
 
 ## 1. 上传
 
+上传统一从 `POST /api/storage/upload/initiate` 开始（客户端本地算 sha256，先做秒传探测），
+服务端按对象存储是否可用返回不同的上传地址：
+
 | 方式 | 端点 | 适用 |
 | --- | --- | --- |
-| 服务端流式上传（默认） | `PUT /api/storage/upload/stream/{asset_id}` | 对象存储未对浏览器开放时使用；边收边算 sha256 并与声明比对 |
 | 分片预签名直传 | `POST /api/storage/upload/initiate` → 逐片 `PUT` → `POST /api/storage/upload/complete` | 对象存储经反代对外可达时；大文件并行上传、可断点续传 |
+| 服务端流式上传 | `PUT /api/storage/upload/stream/{asset_id}`（用 initiate 返回的 `direct_upload_url`） | 本地对象模式（未配置对象存储端点），或预签名地址对浏览器不可达时的回退；边收边算 sha256 并与声明比对 |
 
 - **秒传**：上传前本地算 sha256，平台已有同一份二进制即直接复用（内容寻址，不重复占空间）。
 - **绑定**：`POST /api/storage/bind` 用 `binding_role` 说明用途（`master_archive` / `track_audio` / `disc_image` / `scans` …）。
@@ -26,7 +29,7 @@ MetaFusion 只做**受控分发**：上传的是原始文件，下载回的也�
 ## 2. 下载与访问控制
 
 - `GET /api/storage/download/{asset_id}`：S3 模式下返回带时限的预签名地址；本地对象模式由服务端流式下发。
-- 可见性只有一条口径：**上传者本人或管理员直通，其余人只要任一绑定目标实体可见即可读**。
+- 可见性只有一条口径：**上传者本人或持 `storage.asset.moderate` 的审核者直通，其余人只要任一绑定目标实体可见即可读**（不可读一律 `404`）。
 - 下载、元数据读取与哈希校验共用同一判定，不会出现「能下载不能查」的差异。
 
 ## 3. 不做的事（明确边界）

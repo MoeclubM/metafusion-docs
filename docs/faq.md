@@ -45,12 +45,13 @@ A：公开元数据（作品目录、实体详情、关键词检索、标签与�
 A：先确认已携带有效会话（`Authorization: Bearer <token>` 或 Cookie `mf_session`），且账号具备对应权限码（例如维护公开条目需要 `catalog.entity.edit`，未持有时只能存草稿或提交审核）。写入请带上 `edit_note`（修改说明）与 `sources`（参考来源），它们会记入修订历史。详情见 [认证与凭证](/api-auth) 与 [新建与编辑](/api-edit)。
 
 **Q：平台接口调用频率限制是多少？**  
-A：限流分两层，都不按是否登录区分：
+A：限流按 IP 计数、不区分是否登录，实际共有三层：
 
+- **账号服务**：认证写入类接口（`POST /api/setup`、`POST /api/auth/login`、`POST /api/auth/refresh`、`POST /api/auth/register`）按 IP 15 次/分钟（进程内存固定窗口）；
 - **目录服务的路由级限流**（按 IP + 路由计数）：`GET /api/catalog/entities`、`GET /api/catalog/tags`、`POST /api/catalog/expressions/details` 各 120 次/分钟，`GET /api/catalog/shelves/feed` 60 次/分钟，`GET /api/catalog/compare`、`POST /api/importer/preview` 各 10 次/分钟；
-- **网关限流**（按 IP）：`/api/` 与 `/api/catalog/` 30 r/s（burst 50），`/api/auth/` 与 `/api/setup` 5 r/s，`/api/storage/` 不限流。
+- **网关限流**（按 IP）：`/api/` 与 `/api/catalog/` 30 r/s（burst 50），`/api/auth/` 与 `/api/setup` 5 r/s、burst 10，`/api/storage/` 30 r/s、burst 100（分片上传天然是多请求，故只放大突发额度）。
 
-超限返回 `429` 与 `Retry-After`，请按该头退避重试。**没有**全站「匿名 60 次/分钟、登录 600 次/分钟」这类配额，响应里也**没有** `X-RateLimit-*` 头。
+三层超限都返回 `429`。目录服务的路由级限流会带 `Retry-After`（秒），按该头退避即可；网关自身拦下的 `429` 不带该头，按秒级退避重试。**没有**全站「匿名 60 次/分钟、登录 600 次/分钟」这类配额，响应里也**没有** `X-RateLimit-*` 头。
 
 ## 部署与运维
 

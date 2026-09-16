@@ -64,7 +64,7 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
       "title": "攻壳机动队",
       "original_language": "ja",
       "translations": { "zh-CN": { "title": "攻壳机动队" }, "en-US": { "title": "Ghost in the Shell" } },
-      "attributes": { "cover_aspect": "2:3" },
+      "attributes": { "tags": ["赛博朋克"] },
       "status": "published"
     }
   ],
@@ -90,4 +90,4 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
 ## SEO
 
 - 元数据页 SSR 可被爬虫收录
-- 媒体二进制 URL 带鉴权且 `robots.txt` 禁止直链索引
+- 媒体二进制走鉴权接口（未登录取不到内容）；`robots.txt` 目前只有 `User-agent: *` + `Allow: /`，没有按路径禁止抓取的规则

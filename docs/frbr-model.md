@@ -37,16 +37,16 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 
 ## 通用字段
 
-所有实体共用一张表，字段与 `backend/internal/catalog/types.go` 的 `Entity` 一一对应：
+所有实体共用一张表，字段对应 `backend/internal/catalog/types.go` 的 `Entity`：
 
 | 字段 | 说明 |
 |---|---|
-| `id` / `version` / `status` / `created_by` / `updated_at` | 身份、乐观锁版本、状态、创建者与更新时间 |
+| `id` / `kind` / `version` / `status` / `created_by` / `updated_at` | 身份、固定骨架层级、乐观锁版本、状态、创建者与更新时间 |
 | `title` | 默认题名（展示回退的兜底） |
 | `original_language` | 原语言，用语言标签（如 `ja` / `zh-CN`） |
 | `translations` | 按 locale 分组的**对象**：每个语种含 `title` / `summary` / `aliases` |
 | `types` | 动态业务类型码，来自 definitions 的 `types` |
-| `attributes` | 动态属性，键必须在 definitions 的 `fields` 里声明（含 `cover_aspect`、`tags`） |
+| `attributes` | 动态属性，键必须在 definitions 的 `fields` 里声明，且属于该实体已声明的类型（如 `tags`、`isbn`；`cover_aspect` 这类比例值不在模型里，只是展示建议） |
 | `external_ids` | 外部权威库标识；键必须已在 `external_databases` 预设 |
 | `pictures` | 图片引用：`url` + `caption`（多语言）+ `taken_at` + `source` |
 | `redirect_id` | 合并后的跟随目标（只用 `/resolve` 消费，不直接写） |

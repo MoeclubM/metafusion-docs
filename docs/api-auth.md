@@ -76,8 +76,10 @@ PUT  /api/auth/password          # 改密码：{ old_password, new_password }
 POST /api/auth/change-password   # 同上（同一实现）
 ```
 
-**没有 `refresh_token` 字段**：续期走 `POST /api/auth/refresh`。吊销当前是账号服务进程内的会话状态，
-多实例一致性与 Redis 黑名单尚未实现。
+**没有 `refresh_token` 字段**：续期走 `POST /api/auth/refresh`。服务端会话是 `auth.sessions` 里的行（24 小时），
+登出、全部登出、改密都会直接删行——访问令牌过期后回退查库，看的就是这一行，所以这一层在多实例下天然一致。
+另有一份**进程内**的令牌注销集合（jti），用于让尚未过期的无状态 JWT 立即失效；它是单实例实现，
+横向扩容时这一份需要换成 Redis 之类的共享状态。
 
 ## 管理台端点
 
@@ -111,6 +113,7 @@ DELETE /api/developer/apps/:id
 
 同一个应用也可以由管理员在管理台 `/api/admin/oauth/clients` 下维护（按 `auth.oauth.manage` 授权，
 而开发者中心按归属授权）。密钥在库里只存哈希，之后无处可取，只能轮换。
+自助登记有配额：每个账号最多 20 个应用，超限返回 `app_quota_exceeded`。
 
 ::: tip 自助登记入口
 网关已把 `/api/developer/*` 分流到账号服务（主仓库 `deploy/nginx.conf`）。登录后在站内导航「开发者中心」（`/developer`）
@@ -120,8 +123,13 @@ DELETE /api/developer/apps/:id
 
 ## 限流
 
-- 网关对 `/api/auth/` 与 `/api/setup` 按 IP 限 `5 r/s`（burst 10）；其余 `/api/` 前缀 `30 r/s`（burst 50）
-- 账号服务对登录、注册、`/oauth/token`、`/oauth/authorize`、`/setup`、开发者应用的写入另有防爆破限流
+- 网关按来源 IP 固定窗口限流：账号服务相关前缀走 `auth_limit`（`5 r/s`）——`/api/auth/`、`/api/setup`、
+  `/api/oauth/`、`/api/oidc/`、`/api/.well-known/`、`/.well-known/` 为 `burst 10`，`/api/developer/` 为 `burst 20`
+- 其余 `/api/` 前缀走 `api_limit`（`30 r/s`，`burst` 视 location 为 20 / 50 / 100；账号管理面
+  `/api/admin/users`、`/api/admin/groups`、`/api/admin/oauth/`、`/api/admin/settings`、`/api/admin/invites` 都是 `burst 50`）
+- 账号服务另按 IP 对认证写入类接口做固定窗口限流（15 次/分钟）：`/api/auth/login`、`/api/auth/refresh`、
+  `/api/auth/register`、`/api/setup`、`/api/oauth/authorize`、`/api/oauth/token`，以及开发者中心的
+  `POST /api/developer/apps` 与 `POST /api/developer/apps/:id/rotate-secret`
 - 超限返回 `429` 与 `Retry-After`；**不存在全站 `X-RateLimit-*` 响应头，也不按 User-Agent 判定**
 
 ## 用令牌调用
@@ -134,7 +142,7 @@ curl "/api/catalog/entities?kind=work&limit=10"
 curl -X POST /api/catalog/entities \
   -H "Authorization: Bearer <session-token>" \
   -H "Content-Type: application/json" \
-  -d '{"entity":{"kind":"work","title":"新作品","original_language":"ja","translations":{"zh-CN":{"title":"新作品"}},"attributes":{"cover_aspect":"2:3"}},"expected_version":0,"edit_note":"initial import per official source","sources":[{"kind":"url","citation":"官网","url":"https://example.com"}]}'
+  -d '{"entity":{"kind":"work","title":"新作品","original_language":"ja","translations":{"zh-CN":{"title":"新作品"}}},"expected_version":0,"edit_note":"initial import per official source","sources":[{"kind":"url","citation":"官网","url":"https://example.com"}]}'
 ```
 
 ## 相关页面

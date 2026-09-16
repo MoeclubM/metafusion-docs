@@ -53,7 +53,7 @@ POST /api/catalog/entities
     "original_language": "ja",
     "translations": { "zh-CN": { "title": "攻壳机动队", "summary": "..." } },
     "types": ["animation"],
-    "attributes": { "cover_aspect": "2:3", "tags": ["动画", "电影"] },
+    "attributes": { "tags": ["动画", "电影"] },
     "external_ids": { "bangumi": "265" },
     "pictures": [{ "url": "https://example.com/cover.jpg", "source": { "kind": "url", "citation": "官方海报", "url": "https://example.com" } }],
     "status": "published"
@@ -68,7 +68,9 @@ POST /api/catalog/entities
 - `translations` 是按 locale 分组的**对象**（每个语种含 `title` / `summary` / `aliases`），不是数组；
   原语言题名放在对应语种行里
 - `attributes` 的键必须在已发布定义中声明（未声明的键 `400 unknown_field: <code>`），
-  业务形态用标签与 `cover_aspect`（`"1:1"` / `"2:3"` / `"3:4"`）表达，没有 `media_type` 这种树状分类
+  业务形态用**标签**（`attributes.tags`）与动态类型表达，没有 `media_type` 这种树状分类
+- 封面比例不是可写字段：`cover_aspect` 未在已发布定义中声明（自造这个键会被 `unknown_field` 拒绝）。
+  比例只是展示建议（音乐 1:1、影视 2:3、书籍 3:4），展示层按封面图自然比例推断
 - `external_ids` 的键必须是已登记的外部权威库（见 `GET /api/catalog/external-databases`）
 - 请求体里出现未知字段一律 `400 invalid_payload`（服务端按严格模式解码）
 - 幂等：带 `Idempotency-Key` 请求头时，同键重放直接返回首创结果（进程内存 24 小时；键按「路由 + 用户 + 键」缓存，
@@ -164,13 +166,16 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 
 ```http
 POST /api/catalog/entities/:id/lifecycle
-{ "target_id": "<保留的实体>", "expected_version": 3, "edit_note": "merge duplicate", "sources": [] }
+{ "target_id": "<保留的实体>", "expected_version": 3, "edit_note": "merge duplicate",
+  "sources": [{ "kind": "url", "citation": "两个条目指向同一实体的官方出处", "url": "https://example.com" }] }
 ```
 
 - 带 `target_id` 为**合并**：目标必须同 kind、同归属（`work_id` / `release_id` / `medium_id` / `parent_id` 一致）
   且已发布，否则 `400 invalid_merge_target`；源实体状态置 `merged` 并写入 `redirect_id`，
   指向它的关系与结构引用会被改写
-- 不带 `target_id` 为**退役**：状态置 `deleted`（`sources` 可以为空数组，但 `edit_note` 仍必填）
+- 不带 `target_id` 为**退役**：状态置 `deleted`
+- 两个动作的证据要求与实体写入一致：`edit_note` 非空 + 至少一条 `sources`，空数组会被
+  `400 evidence_required` 拒绝；已 `deleted` / `merged` 的实体再调会返回 `400 invalid_status`
 - 合并后的旧 id 用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体
 - 两个动作都需要 `catalog.lifecycle.manage`；当前没有 `archived` 一类的中间状态
 
@@ -180,7 +185,9 @@ POST /api/catalog/entities/:id/lifecycle
 GET /api/catalog/entities/:id/revisions
 ```
 
-每次写入都会生成修订行（含操作者、`edit_note`、`sources` 与快照），路径上与实体同一可见性口径。
+每次写入都会生成修订行（含操作者、`edit_note`、`sources` 与快照），写入与修订行在同一事务里落库。
+实体修订按实体可见性过滤；该端点**也接受关系 ID**（关系修订行的 `target_id` 就是关系 ID），
+此时可见性由关系两端实体共同判定。
 
 ## 外部导入
 
@@ -189,7 +196,7 @@ GET /api/catalog/entities/:id/revisions
 | 端点 | 作用 |
 |---|---|
 | `POST /api/importer/preview` | 按 URL / ID 出站抓取并返回结构化预览（分集分页、≤8 并发详情抓取），限流 10/分钟 |
-| `POST /api/importer/import` | 按预览载荷落库，服务端在同一事务里建出条目链 |
+| `POST /api/importer/import` | 按预览载荷落库（作品 → 发行 → 载体 → 曲目 → 关系逐次保存，**每条实体各自一个事务**：中途失败不会回滚已写入的前序实体，所以落库前的零写入预检才是整体防线） |
 
 - `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 bangumi），其它来源 `400 not_supported`
 - `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`
@@ -200,8 +207,12 @@ GET /api/catalog/entities/:id/revisions
 - 导入会拉取条目的演职员与角色：语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` /
   `voiced_by`），否则落 `credit_for` 并把职位原文写进 `credit_role`；角色番位落 `character_in` 的
   `character_rank`，声优建 `voiced_by` 并以 `character` 引用角色实体
-- **仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、
-  发行版 `edition_type`，以及 `publisher` 实体引用（预览只有自由文本名称，不虚构）
+- 上游 infobox 会映射到**已声明**的字段码（映射表命中才写；未命中的键只留在 `attributes.infobox`
+  原文快照里，不另造字段）；分集/篇目按上游分集端点落 `content_unit` 树；发行版的
+  `edition_type` / `edition_batch` / `packaging` / `distribution_channel` 只在命中词表时写入，
+  未命中时该维度留空而不是硬凑映射
+- **仍不导入**：上游的 work↔work 关系网（不抓 `/v0/subjects/{id}/subjects` 一类关联，只建署名与
+  角色关系），以及 `publisher` 实体引用（预览只有自由文本名称，不虚构 Agent 引用）
 
 ## 实例间交换
 

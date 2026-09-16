@@ -37,7 +37,7 @@ Content-Type: application/json
 字段说明：
 
 - `sha256_hash`（必填）：客户端本地计算的 64 位十六进制 SHA-256，是文件的**身份**；
-- `part_count`（可选，默认 1）：分片数量，>1 时返回每个分片的预签名地址；超过 `STORAGE_MAX_PARTS`（默认 10000）返回 `400 too_many_parts`；
+- `part_count`（可选，默认 1）：分片数量，`presigned_urls` 按它给出对应个数的预签名地址，>1 时另给 `part_size_hint`；超过 `STORAGE_MAX_PARTS`（默认 10000）返回 `400 too_many_parts`；
 - `target_entity_id`（可选）：同时绑定到该实体，必须对调用者可见；`target_entity_type` 若填写，必须与目录给出的 kind 一致；
 - `binding_role`（可选，默认 `master_archive`）：绑定用途，取值匹配 `^[a-z][a-z0-9_]{0,31}$`，
   例如 `track_audio`、`disc_image`、`video`、`scans`；不设封闭枚举，新增用途不需要改代码。
@@ -162,5 +162,7 @@ GET /api/storage/download/{asset_id}
 
 ## 限流与审计
 
-- 上传与下载经网关转发；网关对既有 `/api/` 路径限流，`/api/storage/` 为避免误伤大文件分片上传**不限流**；
+- 上传与下载经网关转发；网关按 IP 对 `/api/` 限流（令牌桶 `30 r/s`），`/api/storage/` 的突发额度放宽到 `burst 100`——
+  限流按**请求数**计、与字节数无关，而分片上传天然是多请求，放宽突发额度是为了不掐正常分片；
+- 超限由网关直接返回 `429`；网关这一层的 429 **不带** `Retry-After`（只有目录服务自身的路由级限流才带该头）；
 - 目录侧的写入审计仍按编目流程记录；存储服务当前没有独立的操作审计表（缺口）。

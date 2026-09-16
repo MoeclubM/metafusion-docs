@@ -37,8 +37,9 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `tags` | 多值标签过滤（重复出现或逗号分隔，命中任一即返回，服务端走 JSONB 包含匹配） |
 | `limit` / `offset` | 分页；`limit` 默认 50、上限 100，越界静默按 50 |
 
-响应为 `{ "items": [...], "total": <真实 COUNT> }`；默认按 `updated_at DESC, id` 排序，
-按关联 id 查询时按 `position` 升序，便于直接渲染分碟与曲目顺序。
+响应为 `{ "items": [...], "total": <真实 COUNT> }`；默认按 `updated_at DESC, id` 排序；
+带 `content_unit_id` / `release_id` / `medium_id` / `parent_id` 时改按 `position` 升序，
+便于直接渲染分碟与曲目顺序（`work_id` 不触发该排序，仍是默认序）。
 
 多值过滤在服务端完成（不会先取固定条数再由客户端过滤，避免合法候选被截断），
 关系编辑器的对端选择器就是用它收敛候选：

@@ -55,7 +55,7 @@ MetaFusion 是一个由社区共同维护的开放元数据平台。具备编辑
 
 - **音乐**：MusicBrainz、VGMdb、ISRC
 - **动画 / 影视**：Bangumi、AniList、IMDb、TMDb
-- **图书 / 视觉小说**：ISBN、VNDB、豆瓣读书
+- **图书 / 视觉小说**：ISBNdb（`isbndb`）、VNDB（`vndb`）、豆瓣读书（`douban_book`）
 
 ## 5. 消歧与重复合并
 

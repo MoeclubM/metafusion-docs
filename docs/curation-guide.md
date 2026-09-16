@@ -121,8 +121,11 @@ group: "guide"
 
 署名类关系（`created_by` / `performed_by` / `composed_by` / `lyricist_of` / `arranged_by` /
 `directed_by` / `written_by` / `illustrated_by` / `narrated_by` / `voiced_by` /
-`photographed_by` / `modeled_by` / `developed_by` / `translated_by`）统一为
-work/content_unit/expression/release → agent。需要新关系码时，走后台 Definitions 的
+`photographed_by` / `modeled_by` / `developed_by` / `translated_by`）目标端统一是 `agent`，
+但**可写的来源层级按码而异**（例如 `directed_by` / `written_by` 只接 work|content_unit，
+`arranged_by` 只接 work|expression，`narrated_by` 只接 expression|release）——
+以 `GET /api/catalog/definitions` 的 `relations.<code>.source_kinds` 为准，
+连错层级会被 `invalid_endpoints` 拒绝。需要新关系码时，走后台 Definitions 的
 草稿 → 影响面校验 → 发布。
 
 ### 4.2 多边区分
@@ -137,11 +140,14 @@ work/content_unit/expression/release → agent。需要新关系码时，走后�
 
 ## 5. 封面保真
 
-| 媒介形态 | `cover_aspect` | 建议最低分辨率 | 可用来源 |
+| 媒介形态 | 建议展示比例 | 建议最低分辨率 | 可用来源 |
 |---|---|---|---|
 | 音乐唱片 / OST / 单曲 | `"1:1"` | ≥ 1400 × 1400 px | 官方数字版封面、Cover Art Archive |
 | 电影 / TV 动画 / 纪录片 | `"2:3"` | ≥ 1000 × 1500 px | 官方宣发海报、院线海报 |
 | 图书 / 轻小说 / 漫画 | `"3:4"` | ≥ 1200 × 1600 px | 出版社官网、ISBN 官方归档图 |
+
+比例是**展示建议**，不是可写字段：`cover_aspect` 未在已发布定义中声明，写进 `attributes` 会被
+`400 unknown_field` 拒绝；展示层按封面图自然比例推断。
 
 1. 杜绝纯色占位图、404 图、带「暂无图片」水印的过渡图
 2. 作品主封面必须是官方商业出版物或宣发物料，不用同人图
@@ -189,7 +195,7 @@ work/content_unit/expression/release → agent。需要新关系码时，走后�
 - [ ] 唱片编号 `catalog_number` 是否按官方形态书写（如 `VICL-60017`），不用口语化文本
 
 ### 7.4 封面
-- [ ] `cover_aspect` 与实际宽高比是否一致（音乐 1:1、影视 2:3、书籍 3:4）
+- [ ] 封面实际宽高比是否符合形态建议（音乐 1:1、影视 2:3、书籍 3:4）
 - [ ] 分辨率是否达标、无盗链水印、无占位图
 
 ### 7.5 图谱与多语言

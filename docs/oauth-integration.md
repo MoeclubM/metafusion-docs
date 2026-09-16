@@ -29,8 +29,9 @@ MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（�
 | 客户端列表（登录可见） | `GET /api/oauth/clients` | 登录 |
 | 客户端管理与审计 | `/api/admin/oauth/*`、`POST /api/admin/users/{id}/revoke-oauth-tokens` | 权限码 `auth.oauth.manage` |
 
-`/api/oauth/authorize` 与 `/api/oauth/token` 与登录类接口共用按来源 IP 的固定窗口限流
-（15 次/分钟），超限返回 `429` + `Retry-After: 60` 与 `{"error":"rate_limited"}`，联调脚本要带退避重试。
+`/api/oauth/authorize` 与 `/api/oauth/token` 与登录类接口共用**账号服务**按来源 IP 的固定窗口限流
+（15 次/分钟），超限返回 `429` + `Retry-After: 60` 与 `{"error":"rate_limited"}`；
+**网关**对 `/api/oauth/` 另有 `5 r/s`（`burst 10`）的入口限流。两处都按 `429` + `Retry-After` 退避重试。
 
 ## 1. 发现文档
 
@@ -358,17 +359,18 @@ with urllib.request.urlopen(userinfo_request) as response:
 |---|---|---|
 | `GET /api/admin/oauth/clients` | 列出全部客户端 | 响应 `{"items":[...]}`，不含密钥哈希 |
 | `POST /api/admin/oauth/clients` | 创建客户端 | 响应 `{"client":{...},"client_secret":"<一次性明文>"}` |
-| `PUT /api/admin/oauth/clients/{id}` | 部分更新 | 只改传入字段：`name` / `redirect_uris` / `scopes` / `trusted` / `disabled` |
+| `PUT /api/admin/oauth/clients/{id}` | 部分更新 | 只改传入字段：`name` / `description` / `homepage_url` / `redirect_uris` / `scopes` / `trusted` / `disabled` / `verified` |
 | `DELETE /api/admin/oauth/clients/{id}` | 删除客户端 | 其授权码与令牌随之级联删除并立即作废；预置第一方种子客户端拒绝删除（`seeded_client_immutable`），要停用请用 `disabled=true` |
 | `POST /api/admin/oauth/clients/{id}/rotate-secret` | 轮换密钥 | 同样只返回一次明文；**旧密钥立即失效**，需同步更新对端配置 |
 | `POST /api/admin/oauth/clients/{id}/revoke-tokens` | 吊销该客户端名下未过期的令牌 | 响应 `{"revoked": n}`，同时作废它尚未兑换的授权码 |
 | `POST /api/admin/users/{id}/revoke-oauth-tokens` | 吊销某用户授出的全部第三方令牌 | 只动 OAuth 令牌，不影响该用户自己的登录会话 |
-| `GET /api/admin/oauth/audits?client_id=&limit=` | 读授权审计 | 响应 `{"items":[...]}`；`limit` 默认 100、上限 500；`client_id` 可选过滤 |
+| `GET /api/admin/oauth/audits?client_id=&limit=` | 读授权审计 | 响应 `{"items":[...]}`；`limit` 默认 100（非正数或大于 500 一律回落成 100）；`client_id` 可选过滤 |
 
 要点：
 
 - 创建请求体：`client_id`（可选，不传由服务端生成 `mfc-` 前缀的 id，形状 `^[a-z][a-z0-9_-]{2,63}$`）、
-  `name`（必填）、`redirect_uris`（必填，即回调白名单）、`scopes`（可选，默认全部受支持项）、`trusted`、`disabled`。
+  `name`（必填，上限 120 字符）、`redirect_uris`（必填，即回调白名单）、`scopes`（可选，默认全部受支持项）、`trusted`、`disabled`；
+  管理面还可传 `description`、`homepage_url` 与 `verified`。
 - **明文 `client_secret` 只在创建与轮换的响应里出现一次**：库里只存 bcrypt 哈希，之后无法再读，丢了只能重新轮换。
 - 删除客户端**不会**删除审计记录（审计只按 `client_id` 文本关联，不建外键），历史同意与拒绝仍可查。
 - 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、
@@ -379,7 +381,8 @@ with urllib.request.urlopen(userinfo_request) as response:
 
 > **自助登记入口**：网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`，接口
 > `GET /api/developer/overview`、`GET|POST /api/developer/apps`、`PUT|DELETE /api/developer/apps/{id}`、
-> `POST /api/developer/apps/{id}/rotate-secret`）自助登记并管理自己的应用——按**应用归属**授权，任何登录账号可用。
+> `POST /api/developer/apps/{id}/rotate-secret`）自助登记并管理自己的应用——按**应用归属**授权，任何登录账号可用，
+> 每个账号最多 20 个应用（超限 `app_quota_exceeded`）。
 > 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
 
 管理台（`/admin`）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。

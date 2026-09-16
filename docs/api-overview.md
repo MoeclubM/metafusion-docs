@@ -20,7 +20,8 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - **认证**：会话 Cookie `mf_session`，或 `Authorization: Bearer <token>`。令牌由账号服务签发（RS256），目录服务只验签、不查库、不签发
 - **请求体**：JSON；未知字段一律拒绝（`400 invalid_payload`），体积上限 2 MiB
 - **响应**：统一 JSON；错误统一为 `{ "error": "<机器码>" }`
-- **限流**：只对少数重型读接口限流（见下），超限返回 `429` + `Retry-After`；**不存在全站 `X-RateLimit-*` 响应头**
+- **限流**：目录服务只对少数重型读接口限流（见下，超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数）；
+  网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`**。全站都**不存在 `X-RateLimit-*` 响应头**
 
 ## 能力分组
 
@@ -30,7 +31,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `type` / `types` / `status` / 关联 id / `field` + `value` / `tags` / `limit` / `offset`） | 开放 |
 | 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
-| 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录 + `catalog.entity.edit` |
+| 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；`catalog.entity.edit` 决定能否协作维护他人/公开条目与直接发布，无此码者只能存 `draft` / `pending_review` |
 | 关系写入 | `POST /api/catalog/relations`、`PUT|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役） | `catalog.lifecycle.manage` |
 | 发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个 Release） | 开放 |
@@ -50,7 +51,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 ## 访问模型
 
 - **元数据开放**：`/api/catalog/*` 的读接口无需鉴权，可被搜索引擎收录
-- **写入受控**：实体写入需登录，且按权限码放行（见 [新建与编辑](/api-edit)）；合并 / 退役另需 `catalog.lifecycle.manage`
+- **写入受控**：实体写入只需登录（无 `catalog.entity.edit` 时提交的状态被收敛为 `draft` / `pending_review`，见 [新建与编辑](/api-edit)）；合并 / 退役另需 `catalog.lifecycle.manage`
 - **未发布内容不公开**：`draft` / `pending_review` 只有创建者（与持生命周期权限者）能读；`deleted` / `merged` 只有创建者能直读
 
 ## 分页与排序
@@ -74,8 +75,9 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `POST /api/importer/preview` | 10 / 分钟 |
 
 写接口（实体、关系、生命周期）没有路由级限流，但仍受网关按 IP 的 `30 r/s`（burst 50）约束；
-`/api/auth/` 与 `/api/setup` 另按 `5 r/s` 限流，`/api/storage/` 为不误伤大文件分片上传而不限流。
-超限响应为 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
+`/api/auth/` 与 `/api/setup` 另按 `5 r/s` 限流；`/api/storage/` 同样受 `30 r/s` 约束，只是因为分片上传天然是多请求而把 burst 放大到 100。
+目录服务的路由级限流超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）；
+网关自身的限流由 nginx 直接返回 `429`（`limit_req_status 429`），响应体不是目录服务的错误 JSON。
 
 ## 错误码
 
@@ -96,11 +98,12 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段不存在 |
 | 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系写入的语义校验失败（见 [新建与编辑](/api-edit)） |
 | 400 | `invalid_merge_target` | 合并目标不是同 kind、同归属的已发布实体 |
+| 400 | `compare_requires_two_to_six` | 对比的 `ids` 少于 2 个或多于 6 个（`/compare` 只接 Release，非 Release 报 `invalid_kind`） |
 | 401 | `authentication_required` | 需要登录的端点未带有效令牌 |
 | 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者） |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分「不存在」与「无权限」） |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致：重读实体后再写 |
-| 429 | `rate_limited` | 命中限流，读 `Retry-After` 退避 |
+| 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避（网关自身的 429 无该头，也不带此 JSON 体） |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） |
 
 ## 实体状态与可见性

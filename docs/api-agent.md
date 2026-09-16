@@ -7,7 +7,7 @@ group: "api"
 
 # AI Agent 自动化 API 与工具规范
 
-Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入读 `POST / PUT /api/catalog/entities`，关系读 `POST /api/catalog/relations`。
+Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。
 主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点——一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
 
 接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录](/catalog)；逐步操作流程见 [AI Agent 接入与自动化编目协作指南](/agent-integration)。
@@ -183,14 +183,15 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 ### 4.3 生命周期
 
-合并与退役走管理端点，带 `target_id` 是合并、不带是退役：
+合并与退役走管理端点，带 `target_id` 是合并、不带是退役。生命周期写入同样要证据（`edit_note` 非空 + `sources` 至少一条，否则 `400 evidence_required`）：
 
 ```http
 POST /api/catalog/entities/:id/lifecycle
-{ "target_id": "<保留的实体 UUID>", "expected_version": 3, "edit_note": "合并重复建档", "sources": [] }
+{ "target_id": "<保留的实体 UUID>", "expected_version": 3, "edit_note": "合并重复建档",
+  "sources": [{ "kind": "url", "citation": "官方条目页", "url": "https://example.com/entry" }] }
 ```
 
-合并要求目标同 kind、同归属且已发布；源实体写入 `redirect_id`，之后用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体。改引用与修订记录在同一事务内完成。
+合并要求目标同 kind、同归属（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id` 都相同）且已发布，否则 `400 invalid_merge_target`；源实体写入 `redirect_id`，之后用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体。改引用与修订记录在同一事务内完成。
 
 ## 5. 幂等、并发与限流
 
@@ -205,6 +206,8 @@ POST /api/catalog/entities/:id/lifecycle
 | 状态码 | `error` | 触发原因 | Agent 自愈动作 |
 | --- | --- | --- | --- |
 | 400 | `invalid_payload` | JSON 形状错误、含未知字段，或 body 后还有多余内容 | 按当前 DTO 重写载荷；不要提交旧契约字段 |
+| 400 | `invalid_payload`（导入子类型：`has_release=true requires mediums` / `release requires mediums`） | 导入载荷声明了发行（`has_release=true`，或带了非空 `release`）却没有 `mediums` | 补 `mediums`；无载体发行改走 `link_mode=append_release_to_work` |
+| 400 | `unsupported_field_for_entity_type` / `invalid_entity_type` / `invalid_link_mode` | 导入载荷里声明了该 `entity_type` 没有落点的字段（如 `mediums[].media_category`、`release.cover_aspect`），或 `entity_type` / `link_mode` 越出允许枚举 | 删掉没有落点的字段或补上对应结构；枚举取 `work` / `artist` / `organization` / `character` 与 `new_work` / `append_release_to_work` / `create_relation`；预览与落库同一预检、零写入 |
 | 400 | `invalid_id` | 路径或结构字段里的 UUID 解析失败 | 用查重与详情响应里的真实 id |
 | 400 | `id_must_be_empty` | 创建时带了 `entity.id` | 创建一律留空 id、`expected_version` 传 0 |
 | 400 | `evidence_required` | 缺 `edit_note`，或 `sources` 为空 | 补一段具体修改说明 + 至少一条来源 |

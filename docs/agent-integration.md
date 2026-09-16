@@ -177,7 +177,7 @@ group: "api"
 - **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回；`kind` / `work_id` / `release_id` / `medium_id` 不可改
 - **状态流转**：新建缺省 `draft`；发布态要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 只能经生命周期端点写入，已发布条目也不能经实体写入降级
 - **关系码取用**：署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …），角色登场用 `character_in`，作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`，组成用 `includes`；没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`
-- **外部导入**：导入器当前只支持 Bangumi（`source` 留空或 `auto` 都归一为 `bangumi`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；选 `merge_translations` 会被拒。预览与落库同权限：预览同样按载荷出站抓取，因此也受限流约束
+- **外部导入**：导入器当前只支持 Bangumi（`source` 留空或 `auto` 都归一为 `bangumi`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。载荷**声明了就必须被兑现**：没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`），`has_release=true` 或带了非空 `release` 却没有 `mediums` 报 `invalid_payload: … requires mediums`（无载体发行改走 `append_release_to_work`），`entity_type` 越出上面四个值报 `invalid_entity_type`；`media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。预览与落库同权限、同一预检判据：预览同样按载荷出站抓取，因此也受限流约束
 
 ## 7. 可照抄示例
 

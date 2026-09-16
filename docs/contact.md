@@ -11,7 +11,7 @@ group: "meta"
 
 - **GitHub**：[MoeclubM/MetaFusion](https://github.com/MoeclubM/MetaFusion)（提 Issue / PR 最快）
 - **社区板块**：在 `/community` 发布话题（平台当前不提供站内私信）——`bug_report`（反馈与建议）用于问题与合规报告、`qa`（求助答疑）用于使用与编目问题、`casual`（闲聊杂谈）用于其它交流
-- **公告板块**：`announcement` 由站务发布通知，不开放日常发帖
+- **公告板块**：`announcement` 用于站务通知与运营公告；编目与合规问题请走 `bug_report`，不要把日常讨论发在这里
 
 ## 报告问题
 
