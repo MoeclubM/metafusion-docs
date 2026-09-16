@@ -1,507 +1,468 @@
 ---
 title: "AI Agent 接入与自动化编目协作指南"
-description: "面向 AI Agent / LLM 系统的 MetaFusion 权威编目审查员接入、7步 SOP、多作品盒装规范、MusicBrainz 录音复用与全栈代码示例。"
+description: "身份设定、七步 SOP、八类 kind 层级建模、盒装与合集、表达复用、审计留痕与可照抄示例。"
 order: 35
 group: "api"
 ---
 
-::: warning 文档与实现存在差异（一手提示）
-本指南的 SOP 与示例基于旧的「五层 LRM + CanonicalEntry + 一站式原子提交」模型，以下内容**在当前实现中不存在**，请勿直接执行：
+# AI Agent 接入与自动化编目协作指南
 
-- `GET /api/search`（现为 `GET /api/catalog/entities?q=...`）
-- `PUT /api/catalog/entity-relations`（现为 `POST /api/catalog/relations` / `PUT|DELETE /api/catalog/relations/:id`）
-- `POST /api/catalog/submit`（一站式原子提交**不存在**；改为按层级多次 `POST /api/catalog/entities`）
-- `CanonicalEntry` / `canonical_entry_id`（现为 `ContentUnit` + `Expression`，Track 通过 `contents[].expression_id` 关联）
-- `Artist`（现为 `Agent` kind）、`Franchise` 实体（由 `collection` kind + 关系表达）
-- `mfp_` PAT 与 `catalog:write` scope（无 PAT 体系）
-- 关系码 `prequel_of` / `spin_off_of` / `part_of_franchise` / `included_in` / `composer` / `lyricist` / `author` / `performer` / `arranger` / `producer` / `phonographic_copyright` 等：**均不存在于 definitions 种子**。实际关系码与端点见 [元数据目录教程](./catalog.md) 或 `defaults.go`，运行时以 `GET /api/catalog/definitions` 为准。
+本指南面向以 Agent 身份接入 MetaFusion 的自动化编目流程：身份设定与铁律、七步标准作业流程、八类 kind 的层级建模、盒装与合集的层级处理、表达跨发行复用、写入与审计留痕，以及可照抄的 Python / TypeScript / cURL 脚本。
 
-**导入器当前能力**（`POST /api/importer/preview` + `/import`，以实例的 `POST /api/importer/preview` 响应为准）：支持 Bangumi subject / person / character；抓取条目（Work）、发行链（Release → Medium → Track）、封面与头像，并会拉取 `/v0/subjects/{id}/persons` 与 `/v0/subjects/{id}/characters`，建 agent 实体与关系——语义明确的职位映射到精确关系码，否则落到通用署名 `credit_for` 并把职位原文写入 `credit_role`；角色本体的番位落 `role`、原文落 `credit_role`，声优建 `voiced_by` 并以 `character` 引用角色实体。**仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、发行版 `edition_type` 与 `publisher` 实体引用（预览仅有自由文本名称，不虚构）。
+接口与错误码契约见 [AI Agent 自动化 API 与工具规范](/api-agent)，写入 DTO 与乐观锁细节见 [新建与编辑](/api-edit)，实体边界与动态定义见 [元数据目录](/catalog) 与 [API 概览](/api-overview)。
 
-编写正确的写入请求体请参照 [新建与编辑](/api-edit) 与 [新建与编辑](/api-edit) 里的请求体说明；编目规范请阅读 [元数据目录教程](./catalog.md)。
-:::
+> 运行时事实来源是 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`。本页示例只示范请求形状，字段码、词表项与关系码一律以目标实例的定义为准。
 
-> 核心 API 统一使用 `/api` 与动态定义引擎。编目规范请阅读 [元数据目录教程](./catalog.md)。
+## 1. 身份设定
 
-# AI Agent 接入与自动化编目协作指南 (AI Agent Integration & Cataloging Guide)
+### 1.1 角色与三条铁律
 
-MetaFusion 是全球化开放元数据与多媒介档案协作平台。平台原生支持 AI Agent（如 Claude、GPT-4o、DeepSeek、Qwen 等）作为**全站权威档案考据员与编目审查员 (MetaFusion Archivist & Cataloging Reviewer)** 深度接入，自主或协同人类考据员执行元数据采集、实体建档、版本录入、关系织网与自动化质检巡检。
+- **角色标识**：MetaFusion Curator & Cataloging Reviewer（编目审查员）
+- **职责范围**：跨媒介（文学、漫画、动画、影视、音乐、游戏）的考据、层级建模、关系织网、审计留痕与写后复核
+- **三条铁律**：
+  1. **题名纯净**：Work 只保留能辨识创作母体的主名；季数、卷号、载体、规格、画质、包装、字幕组信息归 Release / Medium / Track 或标签
+  2. **写入留痕**：每次写入都带具体 `edit_note` 和至少一条 `sources` 项（`{kind, citation, url}`），缺证据服务端一律拒绝
+  3. **检索查重优先**：创建前先查重，能复用就不新建；只有证据显示是不同创作实体时才新建 Work
 
-为了确保全库数据达到国际图书馆学级的高精度与拓扑一致性，所有接入 MetaFusion 的 AI Agent 必须严格遵循本指南所确立的接入规范、实体哲学与七步标准作业流程（7-Step SOP）。
+题名纯净、ISBN 校验位、封面宽高比属于**编目规范**（社区准则与技能约束），不是接口拦截：服务端不会因为题名里带"第 1 季"或"1080P"而拒绝写入，那是建模错误；`attributes` 里的画幅、书号等值也只在该字段被 definitions 声明时按定义校验。规范细节见 [权威编目与审查准则](/curation-guide) 与 [元数据目录](/catalog)。
 
----
-
-## 1. Agent 身份设定与 System Prompt 规范 (Identity & Context)
-
-### 1.1 核心角色设定
-- **角色标识**：`MetaFusion Curator & Cataloging Reviewer`
-- **核心职责**：跨媒介（文学、漫画、动画、影视、音乐、游戏）多源元数据权威考据、纯净实体建模、五层 LRM 体系建档、世界观拓扑 DAG 织网、版本审计留痕与合规性巡检。
-- **三项铁律**：
-  1. **实体题名绝对纯净**：Work 概念层严禁混入任何载体、分季、规格、画质、字幕组等污染修饰词；
-  2. **写操作全程可溯**：每次调用写接口必须附带权威考据链接 `source_urls` 与详尽编辑动机 `edit_note`；
-  3. **检索查重绝对优先**：创建前必先检索防重，能复用不新建，能合并绝不分裂。
-
-### 1.2 推荐 System Prompt 模版
-
-在将 MetaFusion API 注入给大语言模型（LLM）或智能体框架（LangChain, LlamaIndex, Semantic Kernel, AutoGen, CrewAI 等）时，请使用以下标准化 System Prompt：
+### 1.2 System Prompt 模版
 
 ```markdown
-You are the authoritative "MetaFusion Archivist & Cataloging Reviewer" for MetaFusion (an open metadata & media archive platform).
-Your mission is to catalog works, releases, recordings, artists, and franchises with library-grade precision following IFLA LRM and MusicBrainz standards.
+你是 MetaFusion 的编目审查员（Curator & Cataloging Reviewer），负责把考据结论落到目录数据模型里。
 
-Core Rules:
-1. PURE TITLE RULE: Work-level titles must NEVER contain media formats (TV, OVA, BD), seasons (Season 1, S2), resolutions (1080P, 4K), audio specs (FLAC, Hi-Res), publishers, or packaging types. Put those into Release / Medium / Track instead.
-2. 5-LAYER LRM HIERARCHY:
-   - Work: Pure abstract intellectual concept (has composer, lyricist, author, scriptwriter).
-   - CanonicalEntry (Expression): Specific master recording, film/episode cut, novel chapter, or manga chapter (has performer, arranger, producer, director, phonographic_copyright).
-   - Release: Commercial publication/edition with barcode (ISBN/EAN) and catalog_number.
-   - Medium: Physical container disc / volume (Disc 1 Blu-ray, Disc 2 CD, Vol.1).
-   - Track: Physical track/item on a Medium, linked to CanonicalEntry and Work.
-3. BOXSET / COMPILATION INTEGRATION: Never attach a multi-work boxset catalog number (e.g. 13BD collection VWBS-1531) to a single standalone work (e.g. Spirited Away VWBS-1530). Create a compilation Work and Release, expand all Mediums, and link each Track to its respective Work.
-4. EXPRESSION REUSE: Reuse CanonicalEntry across multiple Releases via `tracks.canonical_entry_id` (Appears on Releases).
-5. DAG GRAPH TOPOLOGY: Work/Franchise relations must form a strict Directed Acyclic Graph (DAG). No self-loops, no cyclic sequel/prequel loops.
-6. COVER STANDARDS: Strictly enforce aspect ratios: Music/OST = "1:1", Movie/Anime = "2:3", Book/Comic = "3:4". Must be official high-res art without watermarks.
-7. AUDIT TRAIL: Every write payload MUST include `edit_note` (>= 10 chars explanation) and `source_urls` (array of verified public links).
-8. ZERO HARDCODED STRINGS & i18n: Provide `original_language` and localized translations in `work_translations`.
+数据模型（固定八类 kind）：
+- agent / collection / work / content_unit / expression / release / medium / track
+- work 只放纯净题名、原始语言、作品级简介与标签；季数、卷号、品番、条码、包装、规格归 release 与 medium
+- content_unit 与 expression 必须挂 work_id；medium 必须挂 release_id；track 必须挂 medium_id
+- release 没有 work_id：被其收录表达所属的 Work 全部在 subjects 里声明，role 取 primary / compilation / supplement
+- track 的 contents[] 是唯一收录来源，项为 {expression_id, position, locator}；跨发行复用同一个 expression
+- 关系只用 GET /api/catalog/definitions 中 enabled 的码；声明 acyclic 的关系服务端会拒绝自环与成环
+
+工作纪律：
+1. 先查重（GET /api/catalog/entities?q=…&kind=…），能复用不新建，能补层级不另建母体。
+2. 每次写入都带具体 edit_note 与至少一条 sources{kind, citation, url}。
+3. 创建用 POST /api/catalog/entities：entity.id 留空、expected_version 传 0；更新用 PUT：先 GET 全量，只改要改的字段，其余原样带回，并带上当前 version。
+4. 没有跨层级的原子提交端点：按 agent/work → content_unit/expression → release → medium → track → relations 的顺序逐层提交，记录每步返回的 id；失败就停下并报告已写入的部分。
+5. 收到 409 version_conflict 时回读实体取最新 version 再重放，不盲目重试；不确定是否成功就先 GET 回读。
+6. 第 7 步回读实体、relations、occurrences、revisions 复核，结论只写在已复核的范围内。
+7. 题名纯净、ISBN 校验位与封面比例是编目规范，服务端不做这类自动拦截；不确定就报"需补证据"，不要用近似数据填充。
 ```
 
-### 1.3 挂载 Agent 技能包 (Mounting Cursor Agent Skills)
+### 1.3 技能包
 
-如果你在 Cursor IDE、Claude Code 或本地 Agent 环境中运行，请直接挂载或引用仓库内置的两大标准技能包：
-- **`metafusion-curator`**（编目审查总则与 SOP）：`.cursor/skills/metafusion-curator/SKILL.md`
-- **`lrm-catalog-standards`**（跨媒介发行版命名规范）：`.cursor/skills/lrm-catalog-standards/SKILL.md`
+编目任务先读独立技能仓库 [MoeclubM/metafusion-skills](https://github.com/MoeclubM/metafusion-skills)：
 
----
+- [metafusion-curator](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/metafusion-curator/SKILL.md)：流程、证据、API 写入与回读、审查结论格式
+- [lrm-catalog-standards](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/lrm-catalog-standards/SKILL.md)：实体边界、发行版命名、内容复用
 
-## 2. 全流程标准交互工作流 (7-Step Standard SOP)
+技能里的枚举是说明书，不是运行时事实：实际可用的字段码与关系码仍以目标实例的 `GET /api/catalog/definitions` 为准。
 
-AI Agent 在执行任何自动化编目任务时，必须严格按照以下 7 步 SOP 执行交互循环：
+## 2. 七步标准作业流程
 
-```mermaid
-flowchart TD
-    Step1[第 1 步：权威考据与全库检索防重<br>GET /api/catalog/entities?q=...] --> Step2[第 2 步：纯净题名清洗与多语言对齐<br>original_language + translations]
-    Step2 --> Step3[第 3 步：层级分级与发行版建模<br>Work / ContentUnit / Expression / Release / Medium / Track]
-    Step3 --> Step4[第 4 步：多作品合集/盒装分碟映射<br>Mediums + Track contents 展开]
-    Step4 --> Step5[第 5 步：表达复用<br>Track.contents[].expression_id 关联]
-    Step5 --> Step6[第 6 步：DAG 拓扑织网<br>POST /api/catalog/relations]
-    Step6 --> Step7[第 7 步：审计留痕与提交<br>POST /api/catalog/entities]
+```text
+1 确认实例与工具  →  2 考据与查重  →  3 层级建模  →  4 题名清洗与多语言
+   →  5 按依赖顺序写入  →  6 关系织网  →  7 写后复核与报告
 ```
 
-### 步骤详解
+| 步骤 | 动作 | 依据或端点 |
+| --- | --- | --- |
+| 1 确认实例与工具 | 读端点清单、发布态定义、当前用户与权限 | `GET /api/openapi.json`、`GET /api/catalog/definitions`、`GET /api/auth/me` |
+| 2 考据与查重 | 收集与字段对应的权威来源；按题名、别名、条码、品番、外部 ID 查重 | `GET /api/catalog/entities?q=…&kind=…` |
+| 3 层级建模 | 把事实拆到 Work / ContentUnit / Expression / Release / Medium / Track | 见 §3、§4 |
+| 4 题名清洗与多语言 | Work 题名只留主名，规格移到发行层；补齐 `translations` | `GET /api/catalog/definitions` |
+| 5 按依赖顺序写入 | 逐层 `POST`，保存每步返回的 id；无原子端点 | `POST /api/catalog/entities` |
+| 6 关系织网 | 只用 enabled 的关系码；无环关系不得成环 | `POST /api/catalog/relations` |
+| 7 写后复核与报告 | 回读实体、关系、收录与修订；结论分「通过 / 需补证据 / 需修正 / 实现缺口」 | `GET …/{id}`、`/relations`、`/occurrences`、`/revisions` |
 
-#### 第 1 步：权威源考据与全库检索防重 (Research & Deduplication)
-- **权威源交叉比对**：
-  - 图书/漫画：ISBN 官方分配中心、国家图书馆 CIP、NDL（日本国会图书馆）、豆瓣读书、出版社官网；
-  - 音乐/原声：MusicBrainz、VGMdb、Discogs、Oricon、Apple Music / Tidal；
-  - 动画/影视：TMDB、Bangumi、AniList、IMDb、文化厅媒体艺术数据库、制作委员会官网；
-  - 游戏：VNDB、IGDB、Steam、PlayStation Store。
-- **调用检索防重**：
-  ```http
-  GET /api/catalog/entities?q={作品或条码}&kind=all
-  ```
-  - 若已存在匹配 Work，**严禁二次创建**，仅在其下补充 Release、Medium、Track 或缺失的多语言译名。
+**各步要点**
 
-#### 第 2 步：纯净题名清洗与多语言对齐 (Pure Title & i18n)
-- 提取作品核心概念主名，彻底清洗所有修饰词；
-- 标注 `original_language`，并在 `translations` 中提供 `zh-CN`, `zh-TW`, `en-US`, `ja` 等多语言本地化题名与简介。
+1. 统一入口是 `/api`，没有版本前缀；先确认令牌有效、`permissions` 覆盖要用的端点和状态。
+2. `q` 是题名或 `translations` 整段文本的子串匹配；`limit` 默认 50、上限 100。来源必须与字段对应：作品身份、发行规格、篇目与表达、关系各要各自的证据。
+3. 先决定每层放什么再写载荷。简单作品不必凑齐全部层级；没有来源就不造层级。
+4. `translations` 是按 locale 分组的对象，发布态要求至少一条翻译行。
+5. 创建一律 `entity.id` 留空、`expected_version` 传 0；更新先 `GET` 再 `PUT` 整实体替换。
+6. 关系两端实体必须先存在；职位原文、番位、语言等上下文放 `attributes`。
+7. 回读校验，别把「POST 返回 200」当成建模正确；请求成功也不等于全库图谱已证明无环。
 
-#### 第 3 步：内容/表达分级与发行版树状建模 (Layer Hierarchy)
-- **Work 级创作关系**：绑定 `composed_by`（作曲）、`lyricist_of`（作词）、`created_by`（创作者）、`written_by`（编剧）；
-- **ContentUnit / Expression 级内容与制作关系**：`ContentUnit` 承载篇目/目录结构，`Expression` 可绑定 `performed_by`（演唱/演奏）、`arranged_by`（编曲）、`directed_by`（导演/监督）、`voiced_by`（配音，`character` 引用角色）；无精确职位码时用 `credit_for` + `credit_role` 保真；
-- **Release 级发行规格**：严格遵循命名规范（如书名卷号、ISBN-13、唱片编号）。
+## 3. 八类 kind 的层级建模
 
-#### 第 4 步：多作品合集与盒装展开 (Boxset Mapping)
-- 对于收录多部独立作品的合集盒装，独立建立汇编 Work/Release，展开全部物理 Medium，并将各分碟 Track 准确指向各自独立的母体 Work。
+| kind | 保存的事实 | 归属字段 | 不要放 |
+| --- | --- | --- | --- |
+| `agent` | 责任主体：个人、团体、机构、虚构角色 | 无 | 按单部作品重复创建同一主体 |
+| `collection` | 系列、企划、世界观等聚合枢纽 | 无 | 为作者个人作品全集硬造企划 |
+| `work` | 纯净创作母体、基础题名、创作主体、原始语言、作品级简介与标签 | 无（顶层） | 季数、盘号、卷号、品番、条码、规格、包装 |
+| `content_unit` | 同一 Work 内的逻辑章、集、篇目目录 | `work_id`（必填）、`parent_id`（同 Work） | 专辑名、发行品番、具体盘号 |
+| `expression` | 可被多个发行复用的表达：母版、正片、录音、译本 | `work_id`（必填）、`content_unit_id`（可选） | 发行专属的版次信息；`expression` 没有 `parent_id` |
+| `release` | 一次真实发行的版本信息与 `subjects` | 无上级；`subjects` 声明收录的 Work | 挂到某部作品名下的 `work_id` |
+| `medium` | 发行内真实的盘、卷、文件集及其顺序与载体规格 | `release_id`（必填）、`parent_id`（同 Release） | 作品目录树、没有来源的虚构盘片 |
+| `track` | 载体内的物理位置项与其 `contents` 收录 | `medium_id`（必填）、`parent_id`（同 Medium） | 把 Track 当独立作品或当目录层 |
 
-#### 第 5 步：表达跨发行复用 (Expression Reuse)
-- 提取或复用已有的 `Expression` UUID，使不同 Release 的 Track 通过 `contents[].expression_id` 指向同一表达/录音/章节，实现「Appears on Releases」全局反查。
+归属与父子规则：
 
-#### 第 6 步：DAG 拓扑织网与关系限定 (Graph Topology)
-- 将实体接入世界观企划（由 `collection` kind 与 `includes` 关系边表达，当前无独立 `Franchise` 实体）；
-- 建立 `adaptation_of`、`sequel_of`、`soundtrack_of`、`character_in`、`credit_for` 等语义边（`prequel_of` / `spin_off_of` / `part_of_franchise` / `included_in` 不存在）；
-- 服务端对声明 `acyclic` 的关系执行环路检测，严禁产生闭环；同一角色跨作品用多条 `character_in` 边。
+- `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`；缺归属返回 `parent_required`
+- `parent_id` 只能指向同域父节点（同一 Work 的篇目、同一 Release / Medium 的载体与位置），跨域父子由库内复合外键拦截
+- `release` 的 `subjects` 必须覆盖其载体实际收录的全部 Work，`role` 取 `primary` / `compilation` / `supplement`；漏声明返回 `undeclared_release_subject`
+- `position` 是非负排序整数，`number` 保留官方原文（`A1`、`EX` 不要改写成整数）
 
-#### 第 7 步：审计留痕与提交 (Audit & Submission)
-- 校验封面宽高比（1:1 / 2:3 / 3:4）与分辨率；
-- 校验 ISBN-13 模 10 校验位；
-- 填充清晰的 `edit_note`（≥ 10 字符）与 `sources`；
-- 按层级依次调用 `POST /api/catalog/entities` 提交入库（当前无一站式原子提交端点）。
+## 4. 盒装、合集与跨 Work 收录
 
----
+盒装与合集最容易出错的地方是把整套的品番挂到其中一部单作品上。正确做法是给汇编内容独立建档。
 
-## 3. 多作品合集/盒装 (Boxset) 编目核心规范
+```text
+单作品发行   Release VWBS-1530（1×BD）              subjects: primary → Work《千与千寻》
+             └ Medium 01 ─ Track 1 ─ contents[0].expression_id → Expression（千与千寻 正片）
 
-在影音与出版物中，多作品合集（Boxset / Compilation / Complete Series）极其普遍。**AI Agent 极易犯将全集盒装直接挂在单部作品名下的严重错误**。
+盒装发行     Release VWBS-1531（13×BD 套盒）        subjects: compilation → Work《宫崎骏监督作品集》
+             ├ Medium 01 ─ Track 1 ─→ Expression（鲁邦三世 卡里奥斯特罗之城 正片）
+             ├ Medium 02 ─ Track 1 ─→ Expression（风之谷 正片）
+             ├ Medium 03 ─ Track 1 ─→ Expression（天空之城 正片）
+             ├ …（各分碟指向各自作品下的 Expression）
+             └ Medium 13 ─ Track 1 ─→ Expression（特典：引退记者会）
 
-### 3.1 经典教学案例：宫崎骏监督作品集 (13BD Boxset) vs. 千与千寻单行本
-
-```
-[ 单行本 Release: VWBS-1530 ] ─────────► 属于单部作品 ─────────► [ Work: 千与千寻 ]
-(1 BD-50, 日本院线初版)                                             ▲
-                                                                   │
-[ 13BD 豪华盒装 Release: VWBS-1531 ]                                │
-   ├── Medium 01 (BD): 鲁邦三世 卡里奥斯特罗之城 ── Track 1 ──► [ Work: 鲁邦三世 ]
-   ├── Medium 02 (BD): 风之谷                 ── Track 1 ──► [ Work: 风之谷 ]
-   ├── Medium 03 (BD): 天空之城               ── Track 1 ──► [ Work: 天空之城 ]
-   ├── Medium 04 (BD): 龙猫                   ── Track 1 ──► [ Work: 龙猫 ]
-   ├── Medium 05 (BD): 魔女宅急便             ── Track 1 ──► [ Work: 魔女宅急便 ]
-   ├── Medium 06 (BD): 红猪                   ── Track 1 ──► [ Work: 红猪 ]
-   ├── Medium 07 (BD): 幽灵公主               ── Track 1 ──► [ Work: 幽灵公主 ]
-   ├── Medium 08 (BD): 千与千寻               ── Track 1 ───┘ (精确分碟回溯)
-   ├── Medium 09 (BD): 哈尔的移动城堡         ── Track 1 ──► [ Work: 哈尔的移动城堡 ]
-   ├── Medium 10 (BD): 悬崖上的金鱼姬         ── Track 1 ──► [ Work: 悬崖上的金鱼姬 ]
-   ├── Medium 11 (BD): 起风了                 ── Track 1 ──► [ Work: 起风了 ]
-   ├── Medium 12 (BD): 特典盘 1 (On Your Mark & 宣传片)
-   └── Medium 13 (BD): 特典盘 2 (引退记者会等)
+关系         Work《宫崎骏监督作品集》--includes--> Work《千与千寻》
+             （includes 声明 aggregate，页面按「组成」展示；反向方向由服务端按反向名渲染，不要另建反向边）
 ```
 
-### 3.2 盒装建模规则
-1. **严禁混淆挂载**：绝对禁止将 13BD 盒装 `VWBS-1531` 作为《千与千寻》单部作品的 Release；
-2. **汇编独立建档**：
-   - 建立汇编 Work：《宮崎駿監督作品集》（Compilation Work）；
-   - 在该汇编 Work 下创建 Release：《宮崎駿監督作品集（13BD 豪华限定盒装，VWBS-1531，Walt Disney Studios Japan）》；
-   - 建立 13 个 Medium（Disc 1 ~ Disc 13，介质为 `Blu-ray`）；
-   - 每个 Medium 上的 Track 通过 `contents[].expression_id` 关联对应母作品的下属 Expression（如 Disc 8 Track 1 链接《千与千寻》）；
-3. **图谱收录关系**：建立图谱边 `Work(宮崎駿監督作品集) --includes--> Work(千与千寻)`（当前无 `included_in` 关系码）。
+建模规则：
 
----
+1. **汇编独立建档**：为盒装建汇编 Work，在其下建该盒装的 Release；不要把盒装品番挂到其中任何一部作品
+2. **subjects 声明齐全**：该 Release 的 `subjects` 列出实际收录的全部 Work，盒装内的作品用 `compilation`，主作品用 `primary`，附加内容用 `supplement`
+3. **按实际包装建载体**：13 张 BD 就是 13 个 Medium（`format` 取 definitions 中 `format` 词表的项），特典盘同样按真实盘片建
+4. **分碟回溯到作品**：每个 Medium 下 Track 的 `contents[].expression_id` 指向对应作品下的 Expression——跨 Work 引用是允许的，前提是 `subjects` 已声明
+5. **组成关系**：用 `includes`（`collection`/`work` → `work`/`collection`，声明无环且 aggregate）表达"谁被这套收录"；同一角色跨作品的登场用多条 `character_in`
 
-## 4. 跨媒介表现层 (CanonicalEntry) 多发行复用与版权分离规范
+## 5. 表达跨发行复用
 
-### 4.1 抽象创作 (Work) 与 表现演职 (Expression / CanonicalEntry) 分离
+`Expression` 是"收录到 Track 上的那一层"（原版母带、正片剪辑、译本正文、分集）。同一表达出现在多个发行里时，只建**一个** Expression，各发行的 Track 通过 `contents[].expression_id` 指向它：
 
-| 属性维度 | Work 概念层 (抽象创作) | CanonicalEntry / Expression 层 (表现演职与版权) |
-|---|---|---|
-| **核心含义** | 抽象的词曲旋律、文学故事或剧作思想创作 | 具体的声音母带、正片剪辑、章节正文或单话篇章 |
-| **关联职能** | `composed_by`（作曲）、`lyricist_of`（作词）、`created_by`（创作者）、`written_by`（编剧） | `performed_by`（演唱/演奏者）、`arranged_by`（编曲）、`directed_by`（导演）、`voiced_by`（声优）；其余用 `credit_for` + `credit_role` |
-| **版权标识** | © 原著/词曲著作权 (Copyright) | ℗ 录音制品版权 (Phonographic Copyright) / 影视制版权 |
-| **唯一性** | 一部作品只有一个抽象 Work | 一部作品可以有多个 CanonicalEntry（原版母带、重制版、加长剪辑版、各分集） |
-
-### 4.2 表现篇目复用与「Appears on Releases」反查原理
-
-当周杰伦 2001 年录制的《晴天》原版母带（或某电影院线版正片、某小说标准正文章节）在多个发行版中出现时：
-1. **单一实体**：全库仅创建 **1 个** CanonicalEntry（UUID: `rec_qingtian_2001`，包含 ISRC `CN-A01-03-00123`）；
-2. **多 Release 引用**：
-   - Release 1（2003《叶惠美》首版 CD）：`Disc 1 Track 3` -> `canonical_entry_id = rec_qingtian_2001`；
-   - Release 2（2004《Initial J》日本精选集 CD）：`Disc 1 Track 1` -> `canonical_entry_id = rec_qingtian_2001`；
-   - Release 3（2020《20周年黑胶大套装》Vinyl）：`Side A Track 3` -> `canonical_entry_id = rec_qingtian_2001`；
-3. **反向索引机制**：系统通过 SQL `JOIN tracks ON tracks.canonical_entry_id = canonical_entries.id`，在详情页自动呈现 **“Appears on Releases (收录于以下发行版本)”** 聚合列表，彻底杜绝数据冗余。
-
----
-
-## 5. 不可篡改审计流与安全质检红线
-
-### 5.1 自动化质检拦截规则 (QA Checks)
-
-```
-                       ┌─────────────────────────────────────┐
-                       │       Agent API 写入请求 (Payload)   │
-                       └──────────────────┬──────────────────┘
-                                          │
-                  ┌───────────────────────┼───────────────────────┐
-                  ▼                       ▼                       ▼
-        【纯净题名检测】             【ISBN-13 模10校验】       【封面画幅与比例检测】
-     命中黑名单正则 -> 422 驳回    校验位计算失败 -> 422 驳回   比对 cover_aspect -> 422 驳回
-                  │                       │                       │
-                  └───────────────────────┼───────────────────────┘
-                                          │
-                                          ▼
-                               【DAG 拓扑有向无环校验】
-                               DFS 检测到环路 -> 422 驳回
-                                          │
-                                          ▼
-                               【不可篡改审计元数据校验】
-                           edit_note < 10 或 source_urls 空 -> 422 驳回
-                                          │
-                                          ▼
-                                 写入事务与版本快照
-                              (entity_revisions & logs)
+```json
+{
+  "entity": {
+    "kind": "track",
+    "medium_id": "<Medium UUID>",
+    "title": "A1",
+    "translations": { "zh-CN": { "title": "A1" } },
+    "types": ["track"],
+    "status": "published",
+    "attributes": { "role": "side", "duration": 291 },
+    "contents": [{ "expression_id": "<Expression UUID>", "position": 0, "locator": {} }]
+  },
+  "expected_version": 0,
+  "edit_note": "依据黑胶内页标注建立 A 面第一首的收录位置",
+  "sources": [{ "kind": "url", "citation": "官方黑胶内页", "url": "https://example.com/vinyl" }]
+}
 ```
 
-1. **纯净题名黑名单正则拦截**：
-   - 匹配正则：`TV(动画)?|剧场版|OVA|OAD|第[0-9一二三四]季|Season\s*\d+|Vol(ume)?\.\s*\d+|1080[pP]|4[kK]|UHD|Hi-Res|FLAC|初回限定|通常盘`；
-   - 触发时返回 `422 Unprocessable Entity: Dirty title detected`。
-2. **ISBN-13 模 10 校验算法**：
-   $$\left( \sum_{i=1}^{12} d_i \times (1 \text{ if } i \text{ is odd else } 3) + d_{13} \right) \equiv 0 \pmod{10}$$
-3. **封面比例匹配表 (允许 ±5% 误差)**：
-   - 音乐/OST: `cover_aspect = "1:1"` (宽高比 `0.95 ~ 1.05`，分辨率 ≥ 1000×1000 px)；
-   - 影视/动画: `cover_aspect = "2:3"` (宽高比 `0.63 ~ 0.70`，分辨率 ≥ 1000×1500 px)；
-   - 书籍/漫画: `cover_aspect = "3:4"` (宽高比 `0.71 ~ 0.79`，分辨率 ≥ 1200×1600 px)。
-4. **审计签名必填项**：
-   - `edit_note`: 长度 ≥ 10 字符，明确阐述考据依据；
-   - `source_urls`: 至少 1 条合法公开考据 URL。
+- **contents 项的形状**：`{expression_id, position, locator}`；`locator` 走 definitions 的 `locator` 组字段（页码、时间码、文件路径、章节），整轨收录允许 `{}`
+- **反查收录**：`GET /api/catalog/entities/{id}/occurrences`——expression 返回自身，`content_unit` / `work` 返回其表达；发行页要一次取多条表达用 `POST /api/catalog/expressions/details`（请求体 `{ids:[…]}`，上限 500）
+- **表达之间的关系**：译本是 `translation_of`、修订是 `revision_of`、翻唱是 `cover_of`、别版是 `alternate_take_of`（均为 expression → expression，声明无环）
+- **版次差异不要改共用表达**：同一表达在不同发行的时长、署名差异属于该版次，写在该 Track 自己的 `attributes`，不要改共用 Expression
 
----
+## 6. 写入与审计留痕
 
-## 6. 完整接入代码示例 (Python / TypeScript / cURL)
+| 操作 | 端点 | 权限 |
+| --- | --- | --- |
+| 创建实体 | `POST /api/catalog/entities` | 登录；直接发布需 `catalog.entity.edit`（或 `catalog.lifecycle.manage`） |
+| 更新实体 | `PUT /api/catalog/entities/:id` | 同上，且必须是该条目的可写者 |
+| 合并 / 退役 | `POST /api/catalog/entities/:id/lifecycle` | `catalog.lifecycle.manage` |
+| 创建关系 | `POST /api/catalog/relations` | `catalog.relation.edit` |
+| 更新 / 删除关系 | `PUT / DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
+| 修订历史 | `GET /api/catalog/entities/:id/revisions` | 开放（按可见性过滤） |
+| 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 
-::: danger 以下脚本基于旧端点，不能直接运行
-示例里的 `/search`、`/catalog/submit`、`/catalog/entity-relations` 在真实后端不存在。请将：
-- `GET /search` → `GET /catalog/entities?q=...&kind=...`
-- `POST /catalog/submit` → 按层级多次 `POST /catalog/entities`（请求体为 `{entity, expected_version, edit_note, sources}`）
-- `PUT /catalog/entity-relations` → `POST /catalog/relations`
-:::
+- **没有跨层级原子端点**：一条发行链就是多次 `POST /api/catalog/entities`，按依赖顺序提交，保存每步返回的 id；中途失败时停止后续依赖写入，报告已写入的部分，不做"整体回滚"的假设
+- **证据与修订**：每次写入都带 `edit_note` + `sources`（`kind` 为 `url` / `publication` / `self`，`citation` 必填，带 `url` 时必须是合法 HTTP(S)）；服务端同时写修订行与事件，可用 `GET /api/catalog/entities/:id/revisions` 复核
+- **幂等**：`POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头（进程内存 24 小时，缓存键为「路由 + 用户 + key」，不做载荷哈希）；更新与删除靠 `expected_version`，不要在 409 之后盲目重复创建
+- **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回；`kind` / `work_id` / `release_id` / `medium_id` 不可改
+- **状态流转**：新建缺省 `draft`；发布态要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 只能经生命周期端点写入，已发布条目也不能经实体写入降级
+- **关系码取用**：署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …），角色登场用 `character_in`，作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`，组成用 `includes`；没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`
+- **外部导入**：导入器当前只支持 Bangumi（`source` 留空或 `auto` 都归一为 `bangumi`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；选 `merge_translations` 会被拒。预览与落库同权限：预览同样按载荷出站抓取，因此也受限流约束
 
-### 6.1 Python 完整接入脚本 (含防重、纯净化、质检校验与自愈重试)
+## 7. 可照抄示例
+
+前置：`METAFUSION_API_BASE` 形如 `http://127.0.0.1:8080/api`；`METAFUSION_TOKEN` 是会话令牌或 OAuth 访问令牌。示例把每层都直接建成 `published`，因此令牌需要 `catalog.entity.edit`（或 `catalog.lifecycle.manage`）；只有普通权限时先建 `draft`，复核后再 `PUT` 发布。
+
+三个示例做同一件事：检索查重 → 建 Work → 建 Expression → 建 Release / Medium / Track → 建关系 → 回读校验。
+
+### 7.1 Python
 
 ```python
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-MetaFusion AI Agent 权威编目与入库客户端 (Python 3.10+)
-"""
+"""按依赖顺序建立一条发行链：检索 → Work → Expression → Release/Medium/Track → 关系 → 回读。"""
 import os
-import re
-import time
 import requests
-from typing import Optional, Dict, Any, List
 
-class MetaFusionCuratorClient:
-    def __init__(self, base_url: str, token: str):
-        self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "MetaFusion-Curator-Agent/1.0 (agent@metafusion.local)",
-            "Content-Type": "application/json"
-        })
-        self.dirty_title_patterns = [
-            r"TV(动画)?", r"剧场版", r"OVA", r"OAD", r"第[0-9一二三四]季",
-            r"Season\s*\d+", r"Vol(ume)?\.\s*\d+", r"1080[pP]", r"4[kK]",
-            r"UHD", r"Hi-Res", r"FLAC", r"初回限定", r"通常盘"
-        ]
+BASE = os.environ["METAFUSION_API_BASE"]
+TOKEN = os.environ["METAFUSION_TOKEN"]
+S = requests.Session()
+S.headers.update({"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"})
 
-    def _request_with_retry(self, method: str, endpoint: str, **kwargs) -> requests.Response:
-        """支持 429 智能退避与自愈重试的请求方法"""
-        max_retries = 3
-        backoff = 1.5
-        for attempt in range(max_retries):
-            resp = self.session.request(method, f"{self.base_url}{endpoint}", **kwargs)
-            if resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", backoff))
-                print(f"[RateLimit] 收到 429 频控，等待 {retry_after} 秒后重试...")
-                time.sleep(retry_after)
-                backoff *= 2
-                continue
-            resp.raise_for_status()
-            return resp
-        raise RuntimeError(f"请求失败，已达最大重试次数: {endpoint}")
+NOTE = "依据官方作品页与官方发行页建立作品、表达与发行链"
+SOURCES = [
+    {"kind": "url", "citation": "官方作品页题名与作品形态", "url": "https://example.com/work"},
+    {"kind": "url", "citation": "官方发行页品番与包装", "url": "https://example.com/release"},
+]
 
-    def search_dedup(self, query: str, entity_type: str = "all") -> List[Dict[str, Any]]:
-        """步骤 1：检索防重（真实端点：/catalog/entities 返回 {items,total}）"""
-        resp = self._request_with_retry("GET", "/catalog/entities", params={"q": query, "kind": entity_type})
-        data = resp.json()
-        return data.get("items", [])
+def tr(zh, en):
+    """translations 是按 locale 分组的对象，不是数组。"""
+    return {"zh-CN": {"title": zh}, "en-US": {"title": en}}
 
-    def validate_pure_title(self, title: str) -> None:
-        """步骤 2：纯净题名质检"""
-        for pat in self.dirty_title_patterns:
-            if re.search(pat, title, re.IGNORECASE):
-                raise ValueError(f"[QA REJECTED] 题名 '{title}' 包含非纯净修饰词: '{pat}'")
+def call(method, path, body=None, key=None):
+    headers = {"Idempotency-Key": key} if key else {}
+    r = S.request(method, BASE + path, json=body, headers=headers)
+    if r.status_code == 409:
+        raise SystemExit("409 version_conflict：回读实体取最新 version 再重放")
+    if not r.ok:
+        raise SystemExit(f"{r.status_code} {r.text}")
+    return r.json()
 
-    def validate_isbn13(self, isbn: str) -> bool:
-        """步骤 7：ISBN-13 模 10 校验"""
-        clean = re.sub(r"[-\s]", "", isbn)
-        if len(clean) != 13 or not clean.isdigit():
-            return False
-        total = sum(int(c) * (1 if i % 2 == 0 else 3) for i, c in enumerate(clean[:12]))
-        check_digit = (10 - (total % 10)) % 10
-        return int(clean[12]) == check_digit
+def create(entity, key):
+    return call("POST", "/catalog/entities", {
+        "entity": entity, "expected_version": 0, "edit_note": NOTE, "sources": SOURCES,
+    }, key)
 
-    def submit_catalog(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """原子化一站式编目入库"""
-        # 前置审计元数据检查
-        assert "work" in payload, "Missing work block"
-        assert "edit_note" in payload and len(payload["edit_note"].strip()) >= 10, "edit_note 必须 >= 10 字符"
-        assert "source_urls" in payload and len(payload["source_urls"]) > 0, "必须提供至少 1 条 source_urls"
-        
-        # 题名与封面画幅检查
-        self.validate_pure_title(payload["work"]["title"])
-        assert payload["work"].get("cover_aspect") in ["1:1", "2:3", "3:4"], "cover_aspect 必须为 1:1, 2:3 或 3:4"
-        
-        # ISBN 校验 (若存在)
-        rel = payload.get("release", {})
-        barcode = rel.get("barcode")
-        if barcode and len(re.sub(r"[-\s]", "", barcode)) == 13:
-            if not self.validate_isbn13(barcode):
-                raise ValueError(f"[QA REJECTED] 无效的 ISBN-13 校验位: {barcode}")
+# 1. 检索查重：q 是题名或翻译文本的子串匹配
+hits = S.get(f"{BASE}/catalog/entities", params={"q": "城市光影", "kind": "work", "limit": 5}).json()
+if hits["total"]:
+    raise SystemExit(f"已有候选 {hits['items'][0]['id']}，先复核是补层级还是合并")
 
-        resp = self._request_with_retry("POST", "/catalog/entities", json=payload)
-        return resp.json()
+# 2. Work：只放创作层事实
+work = create({
+    "kind": "work", "title": "城市光影", "original_language": "zh-CN",
+    "translations": tr("城市光影", "City Lights"), "types": ["photobook"],
+    "status": "published", "attributes": {"tags": ["摄影"]},
+}, "demo-work")
 
-    def update_entity_relations(self, relations: List[Dict[str, Any]], edit_note: str, source_urls: List[str]) -> Dict[str, Any]:
-        """步骤 6：织入 DAG 关系图谱（真实端点：POST /catalog/relations，逐个关系提交）"""
-        payload = {
-            "relations": relations,
-            "edit_note": edit_note,
-            "source_urls": source_urls
-        }
-        resp = self._request_with_retry("POST", "/catalog/relations", json=payload)
-        return resp.json()
+# 3. Expression：可被多个发行复用的那一层
+expr = create({
+    "kind": "expression", "work_id": work["id"], "title": "初版正文",
+    "translations": tr("初版正文", "First edition"), "types": ["expression"],
+    "status": "published", "attributes": {"language": "zh-CN"},
+}, "demo-expr")
 
-# ----------------- 使用示范 -----------------
-if __name__ == "__main__":
-    API_BASE = os.getenv("METAFUSION_API_BASE", "http://localhost:8080/api")
-    API_TOKEN = os.getenv("METAFUSION_API_TOKEN", "mfp_sample_token_here")
-    client = MetaFusionCuratorClient(API_BASE, API_TOKEN)
+# 4. Release 声明 subjects，再按实际包装建 Medium 与 Track
+release = create({
+    "kind": "release", "title": "城市光影（初版精装）",
+    "translations": tr("城市光影（初版精装）", "City Lights (first edition)"),
+    "types": ["release"], "status": "published",
+    "attributes": {"edition_date": "2024-05-01", "edition_type": "standard",
+                   "country": "CN", "catalog_number": "DEMO-0001"},
+    "subjects": [{"work_id": work["id"], "role": "primary", "position": 0}],
+}, "demo-release")
 
-    # 1. 查重
-    existing = client.search_dedup("秒速5厘米", "work")
-    if existing:
-        print(f"[DEDUP] 库中已存在作品: {existing[0]['title']} (UUID: {existing[0]['id']})")
-    else:
-        # 2. 编目入库
-        sample_payload = {
-            "work": {
-                "title": "秒速5厘米",
-                "original_language": "ja",
-                "cover_aspect": "2:3",
-                "cover_image_url": "https://storage.metafusion.local/covers/5cm_poster.webp",
-                "tags": ["动画", "电影", "爱情", "新海诚"],
-                "translations": [
-                    { "locale": "zh-CN", "title": "秒速5厘米", "summary": "时间带着明显的恶意，从我的头顶流逝..." },
-                    { "locale": "ja", "title": "秒速5センチメートル", "summary": "どれほどの速さで生きれば、きみにまた会えるのか。" },
-                    { "locale": "en-US", "title": "5 Centimeters per Second", "summary": "A tale of two people who were close friends..." }
-                ]
-            },
-            "artists": [
-                { "artist_id": "c1aebc99-9c0b-4ef8-bb6d-6bb9bd380a01", "role": "director" }
-            ],
-            "release": {
-                "edition_name": "日本院线官方初版蓝光",
-                "catalog_number": "CWBA-0005",
-                "barcode": "4988104044952",
-                "release_date": "2008-04-18",
-                "country": "JPN",
-                "packaging": "Digipak"
-            },
-            "mediums": [
-                { "position": 1, "name": "Disc 1 (Feature)", "format": "Blu-ray" }
-            ],
-            "tracks": [
-                { "medium_position": 1, "position": 1, "title": "第1话：樱花抄", "duration": 1560 },
-                { "medium_position": 1, "position": 2, "title": "第2话：宇航员", "duration": 1320 },
-                { "medium_position": 1, "position": 3, "title": "第3话：秒速5厘米", "duration": 900 }
-            ],
-            "edit_note": "导入 CoMix Wave Films 官方目录初版蓝光出版规格",
-            "source_urls": [
-                "https://www.cwfilms.jp/5cm/"
-            ]
-        }
-        res = client.submit_catalog(sample_payload)
-        print("[SUCCESS] 成功录入纯净作品实体:", res)
+medium = create({
+    "kind": "medium", "release_id": release["id"], "title": "纸质册",
+    "translations": tr("纸质册", "Printed volume"), "types": ["medium"],
+    "status": "published", "attributes": {"format": "paper"},
+}, "demo-medium")
+
+track = create({
+    "kind": "track", "medium_id": medium["id"], "title": "正文",
+    "translations": tr("正文", "Body"), "types": ["track"],
+    "status": "published", "attributes": {"role": "primary"},
+    "contents": [{"expression_id": expr["id"], "position": 0, "locator": {}}],
+}, "demo-track")
+
+# 5. 关系：两端实体已存在后再织网
+agent = create({
+    "kind": "agent", "title": "示例摄影师",
+    "translations": tr("示例摄影师", "Example Photographer"), "types": ["person"],
+    "status": "published",
+}, "demo-agent")
+
+call("POST", "/catalog/relations", {
+    "relation": {"type": "photographed_by", "source_id": work["id"],
+                 "target_id": agent["id"], "position": 0, "attributes": {}},
+    "expected_version": 0, "edit_note": NOTE, "sources": SOURCES,
+}, "demo-rel")
+
+# 6. 回读校验
+back = call("GET", f"/catalog/entities/{track['id']}")
+assert back["contents"][0]["expression_id"] == expr["id"], "收录引用与写入不一致"
+print("收录反查：", call("GET", f"/catalog/entities/{expr['id']}/occurrences"))
 ```
 
-### 6.2 TypeScript / Node.js 完整接入示例
+### 7.2 TypeScript
+
+在 ESM 环境运行（Node 20+，自带 `fetch` 与顶层 `await`）：
 
 ```typescript
-import axios, { AxiosInstance } from 'axios';
+const BASE = process.env.METAFUSION_API_BASE ?? "http://127.0.0.1:8080/api";
+const TOKEN = process.env.METAFUSION_TOKEN ?? "";
+const NOTE = "依据官方发行页建立作品与发行链";
+const SOURCES = [{ kind: "url", citation: "官方发行页", url: "https://example.com/release" }];
 
-export interface WorkTranslation {
-  locale: string;
-  title: string;
-  summary: string;
+type Entity = { id: string; version: number; contents?: Array<{ expression_id: string }> };
+
+async function call(method: string, path: string, body?: unknown, key?: string) {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: {
+      Authorization: "Bearer " + TOKEN,
+      "Content-Type": "application/json",
+      ...(key ? { "Idempotency-Key": key } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 409) throw new Error("version_conflict：回读实体取最新 version 再重放");
+  if (!res.ok) throw new Error(res.status + " " + (await res.text()));
+  return res.json() as Promise<Entity>;
 }
 
-export interface CatalogSubmitPayload {
-  work: {
-    title: string;
-    original_language: string;
-    cover_aspect: '1:1' | '2:3' | '3:4';
-    cover_image_url?: string;
-    tags?: string[];
-    translations: WorkTranslation[];
-  };
-  artists?: Array<{ artist_id: string; role: string }>;
-  release?: {
-    edition_name: string;
-    catalog_number?: string;
-    barcode?: string;
-    release_date?: string;
-    country?: string;
-    packaging?: string;
-  };
-  mediums?: Array<{ position: number; name: string; format: string }>;
-  tracks?: Array<{ medium_position: number; position: number; title: string; duration?: number }>;
-  edit_note: string;
-  source_urls: string[];
-}
+const tr = (zh: string, en: string) => ({ "zh-CN": { title: zh }, "en-US": { title: en } });
+const create = (entity: Record<string, unknown>, key: string) =>
+  call("POST", "/catalog/entities", { entity, expected_version: 0, edit_note: NOTE, sources: SOURCES }, key);
 
-export class MetaFusionAgent {
-  private client: AxiosInstance;
+// 1. 检索查重
+const hits = (await call("GET", "/catalog/entities?q=" + encodeURIComponent("城市光影") + "&kind=work&limit=5")) as unknown as {
+  items: Array<{ id: string; title: string }>;
+  total: number;
+};
+if (hits.total > 0) throw new Error("已有候选 " + hits.items[0].id + "，先复核再写入");
 
-  constructor(baseURL: string, token: string) {
-    this.client = axios.create({
-      baseURL: baseURL.replace(/\/+$/, ''),
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'User-Agent': 'MetaFusion-TypeScript-Agent/1.0',
-        'Content-Type': 'application/json'
-      }
-    });
-  }
+// 2–4. 按依赖顺序建链：Work → Expression → Release → Medium → Track
+const work = await create(
+  { kind: "work", title: "城市光影", original_language: "zh-CN", translations: tr("城市光影", "City Lights"),
+    types: ["photobook"], status: "published", attributes: { tags: ["摄影"] } },
+  "demo-work"
+);
+const expr = await create(
+  { kind: "expression", work_id: work.id, title: "初版正文", translations: tr("初版正文", "First edition"),
+    types: ["expression"], status: "published" },
+  "demo-expr"
+);
+const release = await create(
+  { kind: "release", title: "城市光影（初版精装）", translations: tr("城市光影（初版精装）", "City Lights (first edition)"),
+    types: ["release"], status: "published",
+    attributes: { edition_date: "2024-05-01", catalog_number: "DEMO-0001" },
+    subjects: [{ work_id: work.id, role: "primary", position: 0 }] },
+  "demo-release"
+);
+const medium = await create(
+  { kind: "medium", release_id: release.id, title: "纸质册", translations: tr("纸质册", "Printed volume"),
+    types: ["medium"], status: "published", attributes: { format: "paper" } },
+  "demo-medium"
+);
+const track = await create(
+  { kind: "track", medium_id: medium.id, title: "正文", translations: tr("正文", "Body"),
+    types: ["track"], status: "published",
+    contents: [{ expression_id: expr.id, position: 0, locator: {} }] },
+  "demo-track"
+);
 
-  // 纯净题名校验
-  public validatePureTitle(title: string): void {
-    const dirtyRegex = /TV(动画)?|剧场版|OVA|OAD|第[0-9一二三四]季|Season\s*\d+|1080[pP]|4[kK]|UHD|Hi-Res|FLAC/i;
-    if (dirtyRegex.test(title)) {
-      throw new Error(`[QA REJECTED] Work title '${title}' contains dirty modifier.`);
-    }
-  }
+// 5. 关系：两端实体已存在后再织网（关系码以 GET /api/catalog/definitions 为准）
+const agent = await create(
+  { kind: "agent", title: "示例摄影师", translations: tr("示例摄影师", "Example Photographer"),
+    types: ["person"], status: "published" },
+  "demo-agent"
+);
+await call("POST", "/catalog/relations", {
+  relation: { type: "photographed_by", source_id: work.id, target_id: agent.id, position: 0, attributes: {} },
+  expected_version: 0, edit_note: NOTE, sources: SOURCES,
+}, "demo-rel");
 
-  // 提交编目
-  public async submitCatalog(payload: CatalogSubmitPayload): Promise<any> {
-    this.validatePureTitle(payload.work.title);
-    if (!payload.edit_note || payload.edit_note.trim().length < 10) {
-      throw new Error('[QA REJECTED] edit_note must be at least 10 characters.');
-    }
-    if (!payload.source_urls || payload.source_urls.length === 0) {
-      throw new Error('[QA REJECTED] source_urls cannot be empty.');
-    }
-
-    const resp = await this.client.post('/catalog/entities', payload);
-    return resp.data;
-  }
-}
+// 6. 回读校验
+const back = await call("GET", "/catalog/entities/" + track.id);
+if (back.contents?.[0]?.expression_id !== expr.id) throw new Error("收录引用与写入不一致");
+console.log("发行链已建立", { work: work.id, release: release.id, track: track.id });
 ```
 
-### 6.3 cURL 命令行操作示例
+### 7.3 cURL
+
+需要 `curl` 与 `jq`。`mfpost` 从 stdin 读载荷、用 `jq -n` 构造 JSON，避免手工拼接转义：
 
 ```bash
-# 1. 检索防重（真实端点）
-curl -X GET "https://api.metafusion.local/api/catalog/entities?q=攻壳机动队&kind=work" \
-  -H "Authorization: Bearer <session-token>"
+BASE=http://127.0.0.1:8080/api
+TOKEN="<会话令牌或 OAuth 访问令牌>"   # 换成真实令牌
+AUTH=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
+NOTE='依据官方作品页与官方发行页建立作品、表达与发行链'
+SRC='[{"kind":"url","citation":"官方作品页","url":"https://example.com/work"}]'
 
-# 2. 纯净化入库（真实端点，请求体为 Edit DTO）
-curl -X POST "https://api.metafusion.local/api/catalog/entities" \
-  -H "Authorization: Bearer <session-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entity": {
-      "kind": "work",
-      "title": "攻壳机动队",
-      "original_language": "ja",
-      "translations": { "zh-CN": { "title": "攻壳机动队", "summary": "公元2029年，网络高度发达的信息化时代..." } },
-      "attributes": { "cover_aspect": "2:3" },
-      "pictures": [{ "url": "https://storage.metafusion.local/covers/gits_1995.webp", "source": { "kind": "url", "citation": "官方海报", "url": "https://v-storage.bnarts.jp/" } }]
-    },
-    "expected_version": 0,
-    "edit_note": "根据 Bandai Visual 官方 4K UHD 档案录入出版物规格",
-    "sources": [{ "kind": "url", "citation": "官方档案", "url": "https://v-storage.bnarts.jp/sp-site/ghost-in-the-shell/" }]
-  }'
+mfpost() { curl -s -X POST "$BASE$1" "${AUTH[@]}" -H "Idempotency-Key: $2" -d @- | jq -r .id; }
+
+# 1. 检索查重
+curl -s "$BASE/catalog/entities?q=城市光影&kind=work&limit=5" | jq '.total'
+
+# 2. Work
+WORK=$(jq -n --arg note "$NOTE" --argjson src "$SRC" '{
+  entity: { kind: "work", title: "城市光影", original_language: "zh-CN",
+            translations: { "zh-CN": { title: "城市光影" }, "en-US": { title: "City Lights" } },
+            types: ["photobook"], status: "published", attributes: { tags: ["摄影"] } },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-work)
+
+# 3. Expression
+EXPR=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" '{
+  entity: { kind: "expression", work_id: $work, title: "初版正文",
+            translations: { "zh-CN": { title: "初版正文" } },
+            types: ["expression"], status: "published" },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-expr)
+
+# 4. Release（subjects 声明收录的 Work）→ Medium → Track
+RELEASE=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" '{
+  entity: { kind: "release", title: "城市光影（初版精装）",
+            translations: { "zh-CN": { title: "城市光影（初版精装）" } }, types: ["release"],
+            status: "published", attributes: { edition_date: "2024-05-01", catalog_number: "DEMO-0001" },
+            subjects: [{ work_id: $work, role: "primary", position: 0 }] },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-release)
+
+MEDIUM=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg release "$RELEASE" '{
+  entity: { kind: "medium", release_id: $release, title: "纸质册",
+            translations: { "zh-CN": { title: "纸质册" } }, types: ["medium"],
+            status: "published", attributes: { format: "paper" } },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-medium)
+
+TRACK=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg medium "$MEDIUM" --arg expr "$EXPR" '{
+  entity: { kind: "track", medium_id: $medium, title: "正文",
+            translations: { "zh-CN": { title: "正文" } }, types: ["track"], status: "published",
+            contents: [{ expression_id: $expr, position: 0, locator: {} }] },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-track)
+
+# 5. 关系：两端实体已存在
+AGENT=$(jq -n --arg note "$NOTE" --argjson src "$SRC" '{
+  entity: { kind: "agent", title: "示例摄影师", translations: { "zh-CN": { title: "示例摄影师" } },
+            types: ["person"], status: "published" },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-agent)
+
+jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" --arg agent "$AGENT" '{
+  relation: { type: "photographed_by", source_id: $work, target_id: $agent, position: 0, attributes: {} },
+  expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/relations demo-rel
+
+# 6. 回读校验
+curl -s "$BASE/catalog/entities/$TRACK" | jq '{id, title, contents}'
+curl -s "$BASE/catalog/entities/$EXPR/occurrences" | jq .
+curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 ```
 
-> 旧示例中的 `work/artists/release/mediums/tracks` 扁平结构与 `mfp_` PAT 已不再适用；Release/Medium/Track 级实体需各自单独 `POST /api/catalog/entities` 并通过 `work_id` / `content_unit_id` / `release_id` / `medium_id` 挂载。
+## 8. 排错
 
----
+完整错误码表见 [AI Agent 自动化 API 与工具规范](/api-agent)。编目过程中最常撞到的几类：
 
-## 7. 常见问题与排错指南 (Troubleshooting)
+| 现象 | 含义 | 动作 |
+| --- | --- | --- |
+| `400 evidence_required` | `edit_note` 为空或 `sources` 为空 | 补具体修改说明 + 至少一条来源；`sources[].citation` 必填 |
+| `400 invalid_payload` | 载荷形状错误，或含未知字段 | 按当前 DTO 重写：`{entity, expected_version, edit_note, sources}`，不要提交旧契约字段 |
+| `400 parent_required` | 缺 `work_id` / `release_id` / `medium_id` | 补归属，或改到正确层级提交 |
+| `400 immutable_scope` | 想改 `kind` / `work_id` / `release_id` / `medium_id` | 换归属要重建实体，重复建档走生命周期合并 |
+| `400 undeclared_release_subject` | Track 收录的表达所属 Work 没在该发行的 `subjects` 里 | 先补 `subjects`（`primary` / `compilation` / `supplement`），再重放 Track |
+| `400 invalid_reference` | 引用的实体不存在、kind 不符或不可见（含引用未发布的实体去发布） | 先读该实体；合并过的先用 `/resolve` |
+| `400 constraint_violation` | 跨 Work 的父子、跨 Release 的载体父子等 | 父子只能在同一 Work / Release / Medium 内 |
+| `400 translation_required` | 发布态没有 `translations` | 至少补一条翻译行再发布 |
+| `400 use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 改走 `POST /api/catalog/entities/:id/lifecycle` |
+| `400 relation_cycle` / `invalid_endpoints` / `duplicate_relation` | 无环关系成环、两端 kind 不允许（含自环）、重复边 | 按 definitions 的端点与无环声明改方向；先删冲突旧边 |
+| `400 invalid_term` / `invalid_type` | 词表值或业务类型不在定义内 | 用 definitions 的 `terms` 与 `types`，不要按字面猜 |
+| `401 authentication_required` / `403 forbidden` | 令牌无效，或缺权限码、不是该条目的可写者 | 重新登录；发布、合并归生命周期权限 |
+| `404 not_found` | 不存在，或对调用者不可见 | 未发布条目只对创建者与持权限者可见 |
+| `409 version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
+| `429 rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避 |
 
-| 错误状态码 | 常见原因 | 自动化自愈策略 (Agent Action) |
-|---|---|---|
-| **422 Unprocessable Entity: Dirty title** | Work 标题中混入了“第1季”、“1080P”、“TV版”等修饰词 | 将修饰词剥离至 Release `edition_name` 或 Medium `format`，重新提交 |
-| **422 Unprocessable Entity: Cyclic relation** | 实体间关系形成了环路（如 A -> B -> A） | 运行图拓扑检查，删除反向多余边，保持单向有向无环 (DAG) |
-| **422 Unprocessable Entity: Invalid cover aspect** | 图片宽高比与申明的 `cover_aspect` 偏差 > 5% | 重新核实图片真实尺寸，校正 `cover_aspect`（1:1 / 2:3 / 3:4）或更换官方正规海报 |
-| **422 Unprocessable Entity: Missing edit_note/source** | 缺失考据链接或 `edit_note` 过于简短 | 补充详细的考据背景说明与至少一条官方权威源 URL |
-| **429 Too Many Requests** | 触发限流阈值 | 读取 `Retry-After` 响应头，采用指数退避暂停后重试 |
-| **401 / 403 Forbidden** | 访问令牌无效或权限不足 | 检查 PAT 令牌是否具有 `catalog:write` 权限 |
+遇到表里没有的错误：先用最小载荷复现一次，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`；仍无法解释就停止写入，把「错误码 + 请求摘要 + 目标实体」作为实现缺口上报，不要用近似数据填充，也不要绕过接口改库。
+
+## 9. 相关文档
+
+- [AI Agent 自动化 API 与工具规范](/api-agent)：工具声明、权限码、幂等与完整错误码表
+- [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
+- [API 概览](/api-overview)：能力分组、分页、限流与可见性
+- [实体查询与详情](/api-entities)：过滤参数、详情、关系与收录反查
+- [元数据目录](/catalog)：固定层级、动态定义与编目边界
+- [权威编目与审查准则](/curation-guide)：题名、证据与审查口径
