@@ -28,6 +28,7 @@ MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（�
 | 读取用户信息 | `GET /api/oauth/userinfo` | `Authorization: Bearer <access_token>` |
 | 客户端列表（登录可见） | `GET /api/oauth/clients` | 登录 |
 | 客户端管理与审计 | `/api/admin/oauth/*`、`POST /api/admin/users/{id}/revoke-oauth-tokens` | 权限码 `auth.oauth.manage` |
+| 用户自查与自助撤回 | `GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}` | 登录即可（只作用于本人） |
 
 `/api/oauth/authorize` 与 `/api/oauth/token` 与登录类接口共用**账号服务**按来源 IP 的固定窗口限流
 （15 次/分钟），超限返回 `429` + `Retry-After: 60` 与 `{"error":"rate_limited"}`；
@@ -377,6 +378,31 @@ with urllib.request.urlopen(userinfo_request) as response:
   `client_secret_rotated`、`client_deleted`、`tokens_revoked`。
 - 另有 `GET /api/oauth/clients`：登录后可见的客户端基本信息列表（不含密钥哈希），供普通用户与前端读取。
 
+### 9.2 用户自助撤回授权（与上面两条吊销的区别）
+
+```http
+# 我给过哪些站点授权（登录令牌或 Cookie）
+GET /api/auth/oauth-grants
+
+# 撤回其中一个：删除本人该应用下的未过期的令牌与未兑换的授权码
+DELETE /api/auth/oauth-grants/{client_id}
+```
+
+`GET` 返回 `items[]`：`client_id`、`name`、`scopes`、`active`、`last_authorized_at`、`expires_at`。
+`active` 为 true 表示当前还有未过期的令牌；**授权过但令牌已过期的应用同样列出**（时间取自同意审计），
+所以这是"我给过哪些授权"的全貌，而不是只有当前生效的那些。
+
+`DELETE` 返回 `{"ok":true,"revoked":N}`：`N` 是被删掉的令牌条数。本来就没有有效令牌时 `N=0`，
+请求仍然成功（幂等）；未知 `client_id` 返回 `404 client_not_found`；未登录返回 `401 authentication_required`。
+撤回后该应用在列表里变成 `active:false`，同意记录保留（用户能看到"曾授权过"）。
+
+| | 用户自助（本节） | 管理端按客户端 | 管理端按用户 |
+|---|---|---|---|
+| 端点 | `DELETE /api/auth/oauth-grants/{client_id}` | `POST /api/admin/oauth/clients/{id}/revoke-tokens` | `POST /api/admin/users/{id}/revoke-oauth-tokens` |
+| 门槛 | 登录（只作用于本人） | `auth.oauth.manage` | `auth.oauth.manage` |
+| 范围 | 我一个应用 | 该客户端名下所有用户 | 该用户所有应用 |
+| 典型用途 | 用户收回授权 | 应急断开接入方 | 账号处置 |
+
 ### 9.1 用管理界面办这些事（不必写 curl）
 
 > **自助登记入口**：网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`，接口
@@ -410,7 +436,8 @@ with urllib.request.urlopen(userinfo_request) as response:
 - **`userinfo` 不按 scope 裁剪声明**：不论令牌 scope 是什么，返回的都是 `sub` / `id` / `username` / `role` / `email` 五项；
   第三方不能靠 scope 推断「拿到了哪些字段」，要做到最小权限只能自己少读、少存。
 - **同意不记忆**：同一用户对同一非 trusted 客户端的每次授权都会重新渲染同意页，没有「已授权免再次确认」。
-- **终端用户没有「我授权过哪些站点」入口**：目前只能由管理员按客户端或按用户吊销，或者等令牌自然过期。
+- **终端用户可自查与自助撤回**（`GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2）；
+  仍**没有** introspection 式的"撤销所有下游令牌"能力，撤回只影响本服务持有的第三方令牌。
 - **没有 introspection，也没有 RFC 7009 撤销端点**：不存在 `POST /api/oauth/revoke` 与 introspection 接口。
   下游若用 JWKS 本地验签（无状态 JWT），撤销后只能等 TTL 自然过期（最长 15 分钟）；
   能即时生效的只有回本服务判定的路径——`userinfo` 以服务端存活令牌行为准，客户端被停用后连换码都会被拒。

@@ -81,12 +81,30 @@ POST /api/auth/change-password   # 同上（同一实现）
 另有一份**进程内**的令牌注销集合（jti），用于让尚未过期的无状态 JWT 立即失效；它是单实例实现，
 横向扩容时这一份需要换成 Redis 之类的共享状态。
 
+## 第三方授权管理（自助撤回）
+
+```http
+GET    /api/auth/oauth-grants                  # 需登录：我给过哪些站点授权
+DELETE /api/auth/oauth-grants/{client_id}      # 需登录：撤回我对该应用的授权
+```
+
+`GET` 返回 `items[]`，每项含 `client_id`、`name`、`scopes`、`active`、`last_authorized_at`、`expires_at`：
+`active` 表示当前还有未过期的令牌；授权过但令牌已过期的应用也会列出（时间来自同意审计），所以列表是"我给过
+哪些授权"的全貌，不只是"当前生效的"。`DELETE` 删除**本人**在该应用下的未过期令牌与未兑换授权码，
+返回 `{"ok":true,"revoked":N}`；本来就没有有效令牌时 `revoked` 为 0，但请求仍然是成功的（幂等）。
+撤回后该应用在列表里转为 `active:false`（同意记录仍在）。
+
+只认当前登录身份、路径里没有别人的 user id，因此任何登录用户都能收回自己的授权；
+管理面的按客户端 / 按用户吊销（`/api/admin/oauth/clients/{id}/revoke-tokens`、
+`/api/admin/users/{id}/revoke-oauth-tokens`，需 `auth.oauth.manage`）保留给治理场景。
+
 ## 管理台端点
 
 | 端点 | 权限码 |
 |---|---|
 | `GET|POST /api/admin/users`、`PUT /api/admin/users/:id/role`、`PUT /api/admin/users/:id/password` | `auth.users.manage` |
 | `PUT /api/admin/users/:id/groups` | `auth.users.manage` |
+| `PUT /api/admin/users/:id/ban`（封禁 / 解封，body `{ "banned": true \| false }`） | `auth.users.manage` |
 | `GET|POST /api/admin/groups`、`PUT|DELETE /api/admin/groups/:code` | `auth.groups.manage` |
 | `GET /api/admin/permissions`（权限码清单） | `auth.groups.manage` |
 | `GET|PUT /api/admin/settings`（实例设置） | `auth.settings.manage` |
@@ -95,7 +113,26 @@ POST /api/auth/change-password   # 同上（同一实现）
 
 管理员创建账号用 `POST /api/admin/users`（`{ username, email, password }`，默认角色 `editor`）；
 角色取值 `user` / `editor` / `admin`。**授权判定走权限码**（由权限组下发到令牌的 `permissions`），
-角色只在令牌没有任何 `permissions` 声明时兜底。
+角色只在令牌没有任何 `permissions` 声明时兜底。`GET /api/admin/users` 的每一项带 `banned`（仅当为真时下发）。
+
+### 账号封禁
+
+```http
+PUT /api/admin/users/{id}/ban     # { "banned": true }  封禁
+PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true, "user": {...} }
+```
+
+封禁立即生效，不是"打个标记"：
+
+- 登录：口令正确但账号被封禁 → `403` + `{"error":"account_banned"}`（**与口令错误的 `401 invalid_credentials` 区分**，
+  前端据此提示"账号已停用、请联系站务"，而不是引导用户反复重试密码）；
+- 续期：`POST /api/auth/refresh` 同码 `account_banned`（403）；
+- 既有会话与令牌：封禁会删除该用户的服务端会话、第三方令牌与未兑换的授权码，**并且**验签路径（本地校验 JWT 通过之后）
+  再查一次封禁状态——因此在**账号服务自己的端点**（`/api/auth/*`、`/api/oauth/userinfo` 等）上，手里那张未过期的访问令牌立刻失效；
+  目录 / 互动 / 存储三个服务是**本地 JWKS 验签**、不回调账号服务，被封账号的旧令牌在它们那里最长还能用到自然过期（≤15 分钟）——
+  这是无状态验签的既有取舍（要即时跨服务撤销需引入 introspection 或共享注销集合，当前未实现）；
+- 两条护栏：不能封自己（`cannot_ban_self`），也不能封掉最后一个还能登录的管理员（`cannot_ban_sole_admin`，
+  已封禁的管理员不计入剩余数量）。两者都返回 `400`。
 
 ## 开发者中心（自助登记 OAuth 应用）
 
@@ -127,7 +164,8 @@ DELETE /api/developer/apps/:id
   `/api/oauth/`、`/api/oidc/`、`/api/.well-known/`、`/.well-known/` 为 `burst 10`，`/api/developer/` 为 `burst 20`
 - 其余 `/api/` 前缀走 `api_limit`（`30 r/s`，`burst` 视 location 为 20 / 50 / 100；账号管理面
   `/api/admin/users`、`/api/admin/groups`、`/api/admin/oauth/`、`/api/admin/settings`、`/api/admin/invites` 都是 `burst 50`）
-- 账号服务另按 IP 对认证写入类接口做固定窗口限流（15 次/分钟）：`/api/auth/login`、`/api/auth/refresh`、
+- 账号服务另按 IP 对认证写入类接口做固定窗口限流（**默认 15 次/分钟**；速率与开关是实例设置
+  `auth_rate_limit_enabled` / `auth_rate_limit_per_minute`，`false` 时不限流，改完立即生效）：`/api/auth/login`、`/api/auth/refresh`、
   `/api/auth/register`、`/api/setup`、`/api/oauth/authorize`、`/api/oauth/token`，以及开发者中心的
   `POST /api/developer/apps` 与 `POST /api/developer/apps/:id/rotate-secret`
 - 超限返回 `429` 与 `Retry-After`；**不存在全站 `X-RateLimit-*` 响应头，也不按 User-Agent 判定**
