@@ -31,7 +31,7 @@ features:
     details: 采用作品 (Work)、表现 (Expression)、发行 (Release) 与载体 (Medium) 增强架构，条理清晰地组织多版本、多语言与曲目。
   - icon: ⚡
     title: 完整 API 与 Agent 友好
-    details: 提供 MusicBrainz 风格的 Lookup / Browse / Search REST API 与 PAT 个人访问令牌，网页端功能 100% 支持程序化调用。
+    details: 提供开放的 REST API 与 OAuth 2.0 / OIDC 接入，实体查询、检索与写入均可程序化调用，网页端功能 100% 支持 API 复现。
 ---
 
 ## 本站写什么
