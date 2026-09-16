@@ -137,6 +137,7 @@ DELETE /api/storage/bindings/{binding_id}
 | GET | `/api/storage/entities/{id}/files` | 实体可见 | 「这个介质/轨道/表达上挂了哪些文件」入口 |
 | GET | `/api/storage/assets/{id}` | 可读 | 文件元数据与绑定列表 |
 | GET | `/api/storage/download/{asset_id}` | 可读 | 对象存储模式返回预签名地址；本地模式直接流式下发 |
+| GET | `/api/storage/assets/{id}/content` | 可读 | **长期可引用的原档内联地址**：对象存储模式下预签名地址的主机对浏览器不可达且会过期，目录侧引用外部图片时改用本端点（原样下发，不转码；按请求判可见性，只进私有缓存） |
 | POST | `/api/storage/verify-hash` | 探测匿名可用；按 asset 校验需登录 | 只给 `sha256_hash` 是秒传探测（只认 `hash_verified=true` 的资产）；给 `asset_id` 则读回整份对象重算摘要并比对 |
 | GET | `/api/storage/stats` | 审核者 | 完成态文件数与占用字节（`storage.asset.moderate`） |
 
