@@ -409,6 +409,9 @@ with urllib.request.urlopen(userinfo_request) as response:
   能即时生效的只有回本服务判定的路径——`userinfo` 以服务端存活令牌行为准，客户端被停用后连换码都会被拒。
 - **jti 注销集合是单实例内存实现**：即时的批量吊销只在处理该请求的那个实例内生效；
   横向扩容后不要依赖内存状态，以令牌行判定（`userinfo`）为准。
+- **账号服务没有机器可读的 OpenAPI**：目录服务的 `GET /api/openapi.json` 只覆盖 `/api/catalog/*` 与 `/api/admin/catalog-*`，
+  **不含** `/api/oauth/*` 与 `/api/admin/oauth/*`（它们属于独立账号服务）。本文第 2–9 节就是这些端点的权威契约，
+  字段与错误码以本文与目标实例响应为准；如需机器可读描述，需要账号服务另出一份 spec。
 
 ## 11. 最小可运行检查清单
 
