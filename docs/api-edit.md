@@ -1,81 +1,169 @@
 ---
 title: "新建与编辑"
-description: "经 API 复现网页端全部编目能力：创建、编辑、关系与合并。"
+description: "实体写入 DTO、乐观锁、关系、生命周期与外部导入。"
 order: 34
 group: "api"
 ---
 
-::: warning 文档与实现存在差异（一手提示）
-本页绝大多数写入端点**不存在**。当前写入统一走通用实体端点：
-
-- 不存在：`POST /api/catalog/{artists,works,canonical-entries,releases,mediums,tracks,franchises}`、`PUT /api/catalog/{works/:id,canonical-entries/:id,artists/:id,releases/:id}`、`PUT /api/catalog/works/:id/relations`、`PUT /api/catalog/entity-relations`、`POST /api/catalog/submit`、`POST /api/catalog/merge`
-- 不存在：`GET /api/catalog/revisions?target_type=...`（真实为 `GET /api/catalog/entities/:id/revisions`）
-- 不存在实体：`CanonicalEntry`（现为 `ContentUnit` + `Expression`）、`Artist`（现为 `Agent`）、`Franchise`（由 `collection` kind + 关系表达）
-
-**真实写入端点**：`POST /api/catalog/entities`（创建，支持 `Idempotency-Key`）、`PUT /api/catalog/entities/:id`（整实体替换 + `expected_version` 乐观锁）、`POST /api/catalog/relations`、`PUT|DELETE /api/catalog/relations/:id`、`POST /api/catalog/entities/:id/lifecycle`（合并/退役，仅管理员）。请求体为 `{ entity: {...}, expected_version, edit_note, sources }`，不是逐实体扁平字段。
-:::
-
 # 新建与编辑
 
-全部需认证，自动写入 `EntityRevision`，与前端通用编辑器一致。每次写入必须带 `edit_note` 与 `source_urls`。
+目录写入只有一组端点：**实体用 `/api/catalog/entities`，关系用 `/api/catalog/relations`，
+合并 / 退役用 `/api/catalog/entities/:id/lifecycle`**。
+不存在按实体拆分的旧路径（`POST /api/catalog/works`、`PUT /api/catalog/artists/:id`、
+`PUT /api/catalog/entity-relations`、`POST /api/catalog/submit`、`POST /api/catalog/merge`），
+也没有「一次请求原子建完整条目链」的端点。
 
-## 新建（真实端点）
+## 前提：认证与权限码
+
+写入一律需要登录（`401 authentication_required`），并按权限码放行（`403 forbidden`）：
+
+| 权限码 | 能做什么 |
+|---|---|
+| `catalog.entity.edit` | 创建与编辑实体（含维护公开条目） |
+| `catalog.relation.edit` | 创建 / 替换 / 删除关系 |
+| `catalog.lifecycle.manage` | 合并、退役，以及处置他人的未发布条目 |
+| `catalog.definitions.manage` | 起草、校验、发布动态定义 |
+| `catalog.import.submit` | 调用外部导入的预览与落库 |
+| `catalog.shelves.manage` | 维护货架规则 |
+
+权限码由账号服务装进权限组、随访问令牌的 `permissions` 声明下发（admin 组带 `*` 通配）。
+只有完全没有 `permissions` 声明的老令牌才按历史角色兜底（admin 放行全部目录码，editor 放行 `catalog.entity.edit`）。
+**没有 `catalog.entity.edit` 的登录用户**仍可写，但只能把条目存成 `draft` / `pending_review`，
+不能发布，也不能触碰已发布条目。
+
+## 写入前必带的证据
+
+每次写入都必须带 `edit_note`（非空）与至少一条 `sources`，否则 `400 evidence_required`：
+
+```json
+"sources": [{ "kind": "url", "citation": "官方商品页", "url": "https://example.com/item" }]
+```
+
+- `kind` 只接受 `url` / `publication` / `self`
+- `citation` 不能为空；`url` 只要是链接就必须合法（`400 invalid_source`）
+
+## 创建实体
 
 ```http
 POST /api/catalog/entities
 {
   "entity": {
-    "kind": "work",                 // agent | collection | work | content_unit | expression | release | medium | track
+    "kind": "work",
     "title": "攻壳机动队",
     "original_language": "ja",
     "translations": { "zh-CN": { "title": "攻壳机动队", "summary": "..." } },
-    "types": ["..."],
+    "types": ["animation"],
     "attributes": { "cover_aspect": "2:3", "tags": ["动画", "电影"] },
-    "external_ids": { "...": "..." },
-    "pictures": [{ "url": "...", "source": { "kind": "official", "citation": "...", "url": "..." } }],
-    "work_id": "<父 Work UUID>",     // content_unit / expression / release / medium / track 依层级填写
-    "content_unit_id": "<UUID>",
-    "release_id": "<UUID>",
-    "medium_id": "<UUID>",
-    "parent_id": "<同层父 UUID>",
-    "position": 1,
-    "number": "1",
-    "contents": [{ "expression_id": "<UUID>", "position": 1, "locator": {} }],
-    "subjects": [{ "work_id": "<UUID>", "role": "...", "position": 0 }]
+    "external_ids": { "bangumi": "265" },
+    "pictures": [{ "url": "https://example.com/cover.jpg", "source": { "kind": "url", "citation": "官方海报", "url": "https://example.com" } }],
+    "status": "published"
   },
   "expected_version": 0,
   "edit_note": "initial import per official catalog",
-  "sources": [{ "kind": "official", "citation": "...", "url": "https://example.com" }]
+  "sources": [{ "kind": "url", "citation": "官方站点", "url": "https://example.com" }]
 }
 ```
 
-`translations` 是按 locale 分组的 **JSON 对象**（每个语种含 `title / summary / aliases`），**不是数组**。作品形态通过 `attributes` 中的标签与 `cover_aspect`（`"1:1"` / `"2:3"` / `"3:4"`）表达，无需 `media_type`。
+- `kind`：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`
+- `translations` 是按 locale 分组的**对象**（每个语种含 `title` / `summary` / `aliases`），不是数组；
+  原语言题名放在对应语种行里
+- `attributes` 的键必须在已发布定义中声明（未声明的键 `400 unknown_field: <code>`），
+  业务形态用标签与 `cover_aspect`（`"1:1"` / `"2:3"` / `"3:4"`）表达，没有 `media_type` 这种树状分类
+- `external_ids` 的键必须是已登记的外部权威库（见 `GET /api/catalog/external-databases`）
+- 请求体里出现未知字段一律 `400 invalid_payload`（服务端按严格模式解码）
+- 幂等：带 `Idempotency-Key` 请求头时，同键重放直接返回首创结果（进程内存 24 小时；键按「路由 + 用户 + 键」缓存，
+  不做载荷哈希）
 
-## 编辑（真实端点）
+### 层级与归属字段
+
+| 字段 | 用在 | 说明 |
+|---|---|---|
+| `work_id` | content_unit / expression / release / medium / track | 所属作品（发行版用它声明收录的作品） |
+| `content_unit_id` | expression | 所属内容单元 |
+| `release_id` / `medium_id` | medium / track | 所属发行版 / 载体 |
+| `parent_id` | content_unit / medium / track | 同层父节点 |
+| `position` / `number` | medium / track 等 | 次序；列表按它排序 |
+| `contents[]` | track | `{ expression_id, position, locator, attributes }`：这条曲目收录的是哪个表达 |
+| `subjects[]` | release | `{ work_id, role, position, attributes }`：发行版声明收录了哪些作品 |
+
+正确的顺序是按层级自下而上补齐：先 `work` → `content_unit` → `expression`，再 `release` → `medium` → `track`，
+最后按需建关系。`work_id` / `release_id` / `medium_id` / `kind` 在更新时**不可改**（`400 immutable_scope`），
+写错了只能新建或走生命周期处置。
+
+## 编辑实体
 
 ```http
 PUT /api/catalog/entities/:id
 {
-  "entity": { ...完整实体，保留所有无关字段... },
+  "entity": { "...": "完整实体，保留所有无关字段" },
   "expected_version": 3,
   "edit_note": "fix typo per official site",
-  "sources": [{ "kind": "official", "citation": "...", "url": "https://example.com" }]
+  "sources": [{ "kind": "url", "citation": "官网标题", "url": "https://example.com" }]
 }
 ```
 
-PUT 是**整实体替换**而非局部 PATCH：必须先 GET 完整实体，按写入 DTO 保留无关字段（翻译、标签、Track contents 可能整组替换）。版本不匹配返回 409。
+- PUT 是**整实体替换**，不是局部 PATCH：先 `GET /api/catalog/entities/:id` 取回完整实体与 `version`，
+  改完再整体写回（翻译、标签、`contents` 都可能整组替换）
+- `expected_version` 与当前版本不一致返回 `409 version_conflict`：重读后再写，不要盲目重试
+- 想把已发布条目降级，或直接写成 `deleted` / `merged`，会被 `400 use_lifecycle_endpoint` 拒绝
+- 发布（`status: "published"`）时至少要有一条 `translations`，否则 `400 translation_required`
 
-## 一站式提交
+## 关系
 
-**当前无 `POST /api/catalog/submit`。** 复合结构需通过多次 `POST /api/catalog/entities`（按 `content_unit / expression` → `release` → `medium` → `track` 层级）+ `POST /api/catalog/relations` 组合完成；外部条目可用 `POST /api/importer/preview` 预览后 `POST /api/importer/import` 导入。
+```http
+POST   /api/catalog/relations          # 建边（支持 Idempotency-Key）
+PUT    /api/catalog/relations/:id      # 替换边的属性（端点与类型不可改）
+DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与证据）
+```
 
-## 外部导入器能力
+```json
+{
+  "relation": { "type": "directed_by", "source_id": "<work_id>", "target_id": "<agent_id>", "position": 0, "attributes": {} },
+  "expected_version": 0,
+  "edit_note": "自官方制作名单",
+  "sources": [{ "kind": "url", "citation": "官方制作名单", "url": "https://example.com" }]
+}
+```
 
-导入器当前以 Bangumi 为来源，支持 `POST /api/importer/preview` 与 `POST /api/importer/import`，服务端在同一事务内创建条目链：
+服务端逐项校验，失败码可直接定位问题：
 
-- **条目 / Work**：题名、原语言、翻译、简介、封面、标签；发行链 Release → Medium → Track（轨道按 `contents[].expression_id` 关联 Expression）。
-- **关联演职员与角色**：会拉取 `/v0/subjects/{id}/persons` 与 `/v0/subjects/{id}/characters`，建 agent 实体与关系。语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` / `voiced_by`），否则落到通用署名 `credit_for` 并把职位原文写入 `credit_role`；角色本体的番位落 `role`、原始文本落 `credit_role`，声优建 `voiced_by` 并以 `character` 引用角色实体。
-- **仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、发行版 `edition_type`，以及 `publisher` 实体引用（预览只有自由文本名称，不虚构）。这些需在导入后按层级手工或经 API 补齐。
+| 失败码 | 触发条件 |
+|---|---|
+| `invalid_relation_type` | 关系码不在已发布定义里，或该码已被停用 |
+| `invalid_endpoints` | 自己连自己，或两端 kind 不在该关系的 `source_kinds` / `target_kinds` 白名单 |
+| `invalid_endpoint_types` | 两端动态业务类型不满足该关系的类型白名单 |
+| `duplicate_relation` | 同类型、同端点、同 position、同属性的边已存在 |
+| `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming` |
+| `relation_cycle` | 声明了 `acyclic` 的关系形成环路（如同类续作互指） |
+
+默认种子的关系码（以 `GET /api/catalog/definitions` 为准）：
+
+- **credits**（署名，一般指向 agent）：`created_by`、`performed_by`、`photographed_by`、`modeled_by`、
+  `developed_by`、`voiced_by`、`composed_by`、`lyricist_of`、`arranged_by`、`directed_by`、
+  `written_by`、`illustrated_by`、`narrated_by`、`translated_by`、`character_in`（角色登场）、
+  `credit_for`（通用署名兜底，职位原文写进 `attributes.credit_role`）
+- **creative**（内容关系）：`adaptation_of`、`sequel_of`、`spin_off_of`、`soundtrack_of`（work↔work）；
+  `translation_of`、`revision_of`、`cover_of`、`alternate_take_of`（expression↔expression）；
+  `pressing_of`（release↔release）
+- **membership**（组成与成员）：`includes`（collection / work → work / collection，声明 `aggregate`）、
+  `member_of`（agent↔agent）、`bonus_included_in`、`store_bonus_for`
+
+`includes` 等声明 `acyclic` 的码会做环路检测；同一角色跨作品用多条 `character_in`。
+外部来源的职位若没有贴切的码，用 `credit_for` + `credit_role` 保真，不要虚构新码。
+
+## 生命周期：合并与退役
+
+```http
+POST /api/catalog/entities/:id/lifecycle
+{ "target_id": "<保留的实体>", "expected_version": 3, "edit_note": "merge duplicate", "sources": [] }
+```
+
+- 带 `target_id` 为**合并**：目标必须同 kind、同归属（`work_id` / `release_id` / `medium_id` / `parent_id` 一致）
+  且已发布，否则 `400 invalid_merge_target`；源实体状态置 `merged` 并写入 `redirect_id`，
+  指向它的关系与结构引用会被改写
+- 不带 `target_id` 为**退役**：状态置 `deleted`（`sources` 可以为空数组，但 `edit_note` 仍必填）
+- 合并后的旧 id 用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体
+- 两个动作都需要 `catalog.lifecycle.manage`；当前没有 `archived` 一类的中间状态
 
 ## 修订历史
 
@@ -83,28 +171,49 @@ PUT 是**整实体替换**而非局部 PATCH：必须先 GET 完整实体，按�
 GET /api/catalog/entities/:id/revisions
 ```
 
-## 合并
+每次写入都会生成修订行（含操作者、`edit_note`、`sources` 与快照），路径上与实体同一可见性口径。
 
-合并/退役不再有独立 `POST /api/catalog/merge`，统一走生命周期端点（管理员）。带 `target_id` 为合并，不带则为退役：
+## 外部导入
 
-```http
-POST /api/catalog/entities/:id/lifecycle
-{ "target_id": "<keep>", "expected_version": 3, "edit_note": "merge duplicate", "sources": [] }
-```
+导入当前只对接 **Bangumi**，两个端点都要 `catalog.import.submit`：
 
-合并后源实体写入 `redirect_id`，可用 `GET /api/catalog/entities/:id/resolve` 解析到目标实体。
+| 端点 | 作用 |
+|---|---|
+| `POST /api/importer/preview` | 按 URL / ID 出站抓取并返回结构化预览（分集分页、≤8 并发详情抓取），限流 10/分钟 |
+| `POST /api/importer/import` | 按预览载荷落库，服务端在同一事务里建出条目链 |
 
-## 结构附加属性与场景方案
+- `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 bangumi），其它来源 `400 not_supported`
+- `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`
+- `link_mode` 取 `new_work`（默认）/ `append_release_to_work` / `create_relation`；
+  `merge_translations` 已被显式拒绝（需要补译名请走常规编辑）
+- 落库前做零写入预检：属性值、未知字段码、`original_language`、翻译行与日期字段都按已发布定义校验，
+  规则与实体写入一致；没有落库位置的载荷字段以 `unsupported_field_for_entity_type` 明确拒绝，不静默丢弃
+- 导入会拉取条目的演职员与角色：语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` /
+  `voiced_by`），否则落 `credit_for` 并把职位原文写进 `credit_role`；角色番位落 `character_in` 的
+  `character_rank`，声优建 `voiced_by` 并以 `character` 引用角色实体
+- **仍不导入**：infobox 派生字段、`/ep` 剧集树（ContentUnit 分集目录）、work↔work 关系网、
+  发行版 `edition_type`，以及 `publisher` 实体引用（预览只有自由文本名称，不虚构）
 
-`locator`（收录位置）、`subject_attributes`（发行对象附加属性）、`inclusion_attributes`（收录附加属性）是固定契约入口：definitions 校验拒绝删除或改成非 group 类型，但允许后台扩展其内部子字段。写入、停用检查与合并改写覆盖与普通属性相同的数据位置——停用子字段不可再新增使用，合并自动改写这些位置的实体引用。
+## 实例间交换
 
-按使用场景收敛子字段走 `definitions.schemes` 声明（槽位三选一：`locator` / `inclusion_attributes` / `subject_attributes`）：kinds/types 白名单（空为不限）、可用子字段（顺序即展示编辑顺序）、必填子集、仅 locator 的 `require_range`（要求至少一个 `semantics=content` 的内容语义子字段有值）。无匹配场景时回退全局组；旧文档无 `schemes` 键时同样回退。子字段的对比语义走闭集 `semantics`（`content`=内容选择范围，`locating`=本版位置，默认 locating）：完整章节换字体致页数变化不算内容变化，前 30 秒与后 30 秒长度相等也不是同一片段。
+| 端点 | 作用 |
+|---|---|
+| `GET /api/exchange/entities/:id` | 导出单个实体快照（JSON），供另一实例导入 |
+| `POST /api/exchange/proposals` | 提交外部编辑提案，请求体与实体写入相同；服务端强制落 `pending_review`，不能绕过审核直接发布 |
 
-## 成员级约束
+## 定义版本管理
 
-- 责任者通过 `agent` kind 实体 + `relations` 表达，不用 `Member` 概念
-- 关系谓词须为 published definitions 中已启用的类型，目标 kind 受该谓词 `allowed_target_types` 约束
-- `kind` 读 `/api/catalog/definitions`；不存在 `entity_type` / `validWorkRoles` 旧字段
+动态定义（类型、字段、词表、关系、模板）由管理员维护，全部需要 `catalog.definitions.manage`：
+
+| 端点 | 作用 |
+|---|---|
+| `GET /api/admin/catalog-definitions` | 版本列表（`include_document=false` 时不带文档，响应顶层回显该选择） |
+| `POST /api/admin/catalog-definitions` | 存一版不可变草稿（文档 + `base_version` + 证据） |
+| `GET /api/admin/catalog-definitions/:id` | 读任意历史版本的完整文档 |
+| `GET /api/admin/catalog-definitions/:id/diff` | 与基线版本的字段级差异（`against` 缺省取该版本的 `base_version`） |
+| `GET /api/admin/catalog-definitions/:id/impact` | 用当前全量数据校验草稿的影响面 |
+| `POST /api/admin/catalog-definitions/:id/publish` | 发布兼容草稿 |
+| `POST /api/admin/catalog-definitions/:id/rollback` | 把历史版本重新起草并发布（文档已一致时 `no_op=true`，不写库） |
 
 ## 示例
 
@@ -113,12 +222,18 @@ POST /api/catalog/entities/:id/lifecycle
 curl "/api/catalog/entities/<id>" -b "mf_session=<cookie>"
 
 curl -X PUT "/api/catalog/entities/<id>" \
-  -H "Authorization: Bearer <session token>" \
+  -H "Authorization: Bearer <session-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "entity": { "id": "<id>", "kind": "work", "title": "修正标题", "translations": {}, "attributes": {} },
     "expected_version": 2,
     "edit_note": "fix typo per official site",
-    "sources": [{ "kind": "official", "citation": "官网标题", "url": "https://example.com" }]
+    "sources": [{ "kind": "url", "citation": "官网标题", "url": "https://example.com" }]
   }'
 ```
+
+## 相关页面
+
+- [API 概览](/api-overview)：错误码与限流
+- [实体查询与详情](/api-entities)：写之前先把实体读全
+- [AI Agent 工具规范](/api-agent)：把写入契约包成工具定义

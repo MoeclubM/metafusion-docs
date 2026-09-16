@@ -57,11 +57,11 @@ export default defineConfig({
       {
         text: '⚡ 开放 API 与开发者专区',
         items: [
-          { text: 'API 架构概览 (WS/2 范式)', link: '/api-overview' },
-          { text: 'PAT 访问令牌与认证', link: '/api-auth' },
+          { text: 'API 概览', link: '/api-overview' },
+          { text: '认证与凭证', link: '/api-auth' },
           { text: '第三方站点接入 OAuth 授权', link: '/oauth-integration' },
-          { text: '实体查询与关联展开 (Lookup/Browse)', link: '/api-lookup-browse' },
-          { text: '全文搜索与多维过滤 (Search)', link: '/api-search' },
+          { text: '实体查询与详情', link: '/api-entities' },
+          { text: '检索与多维过滤', link: '/api-search' },
           { text: '词条写入与合并接口', link: '/api-edit' },
           { text: '资源直传与预签名下载', link: '/api-storage' }
         ]
