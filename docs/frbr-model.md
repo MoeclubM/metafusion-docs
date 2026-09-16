@@ -46,7 +46,7 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 | `original_language` | 原语言，用语言标签（如 `ja` / `zh-CN`） |
 | `translations` | 按 locale 分组的**对象**：每个语种含 `title` / `summary` / `aliases` |
 | `types` | 动态业务类型码，来自 definitions 的 `types` |
-| `attributes` | 动态属性，键必须在 definitions 的 `fields` 里声明，且属于该实体已声明的类型（如 `tags`、`isbn`；`cover_aspect` 这类比例值不在模型里，只是展示建议） |
+| `attributes` | 动态属性。可写键 = 实体 `types` 所声明类型的字段并集，未声明类型时只能为空；键必须在 definitions 的 `fields` 里声明（如 work 的 `tags`、release 的 `isbn`；`cover_aspect` 这类比例值不是字段，比例只是展示建议）。`agent` 的四个业务类型都没有属性字段 |
 | `external_ids` | 外部权威库标识；键必须已在 `external_databases` 预设 |
 | `pictures` | 图片引用：`url` + `caption`（多语言）+ `taken_at` + `source` |
 | `redirect_id` | 合并后的跟随目标（只用 `/resolve` 消费，不直接写） |

@@ -15,7 +15,9 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 ## 1. 自由标签体系
 
 标签是实体属性 `attributes.tags` 里的平铺字符串列表，用来放流派、题材、风格与大众检索词
-（`J-Pop`、`科幻`、`机甲`、`治愈`、`摇滚`）：
+（`J-Pop`、`科幻`、`机甲`、`治愈`、`摇滚`）。**该字段只声明在 work 的业务类型上**：
+写标签前先给作品声明业务类型（`album` / `animation` / `novel` 等），没声明类型时 `attributes` 只能为空。
+其余 kind（agent / collection / content_unit / expression / release / medium / track）的字段集里没有 `tags`：
 
 - **平铺无分类**：标签没有层级与分类树，也没有独立的字典表；后台可声明「标签」字段的呈现方式，
   但标签本身仍是自由字符串
