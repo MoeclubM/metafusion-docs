@@ -13,7 +13,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 
 ## 基础信息
 
-- **Base URL**：`/api`（网关统一透传至目录服务 `backend:8080`；账号、互动、存储是各自独立的服务）
+- **Base URL**：`/api`（单一入口，网关按路径分流到目录、账号、互动、存储四个服务；未单列的前缀兜底给目录服务 `backend:8080`）
 - **OpenAPI 规范**：[GET /api/openapi.json](/api/openapi.json)（OpenAPI 3.0.3）。它只覆盖**目录服务**的 paths 与 schemas；
   账号、互动、存储各自实现自己的前缀，目前没有机器可读的 OpenAPI
 - **交互式文档**：[Scalar (/api/docs)](/api/docs)、[Swagger UI (/api/swagger)](/api/swagger)
@@ -22,6 +22,24 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - **响应**：统一 JSON；错误统一为 `{ "error": "<机器码>" }`
 - **限流**：目录服务只对少数重型读接口限流（见下，超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数）；
   网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`**。全站的限流信号只有 `429` 与（目录侧路由限流带上的）`Retry-After`，响应头里不带 `X-RateLimit-*` 系列
+
+### 网关分流
+
+`/api` 是统一入口，但不同路径归不同服务。`/api/users/*` 是**同一前缀、多个归属**，按精确路径分流：
+
+| 路径 | 归属服务 |
+|---|---|
+| `GET /api/users/:id` | 账号服务（公开资料） |
+| `GET /api/users/:id/stats` | 互动服务（互动统计） |
+| `GET /api/users/:id/favorites` | 互动服务（收藏列表） |
+| `GET /api/users/:id/contributions` | 目录服务（贡献流） |
+| `/api/messages/*` | 互动服务（私信，需登录） |
+| `/api/community/*`、`/api/favorites/*`、`/api/records/*` | 互动服务 |
+| `/api/storage/*` | 存储服务 |
+| `/api/auth/*`、`/api/setup`、`/api/oauth/*`、`/api/oidc/*`、`/api/developer/*`、`/api/admin/{users,groups,permissions,settings,invites,oauth}`、`/.well-known/*` 与 `/api/.well-known/*` | 账号服务 |
+| 其余 `/api/*`（含 `/api/catalog/*` 与目录侧 `/api/admin/{catalog-definitions,shelves,external-databases}`） | 目录服务（兜底） |
+
+归属以主仓库 `deploy/nginx.conf` 的生效矩阵为准。
 
 ## 能力分组
 
@@ -45,7 +63,9 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
 | 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 | 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
-| 收藏与社区 | `/api/favorites/*`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`（`member` 组默认持有发帖码） |
+| 用户主页 | `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` | 开放（`email` 字段仅本人可见；资料 / 统计 / 贡献分别见 [认证与凭证](/api-auth)、[社区使用指南](/community-guide)、[实体查询与详情](/api-entities)） |
+| 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`（`member` 组默认持有发帖码） |
+| 私信 | `/api/messages/with/:id`（GET 读会话、POST 发信） | 需登录 |
 | 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
 
 ## 访问模型
@@ -71,6 +91,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `GET /api/catalog/tags` | 120 / 分钟 |
 | `POST /api/catalog/expressions/details` | 120 / 分钟 |
 | `GET /api/catalog/shelves/feed` | 60 / 分钟 |
+| `GET /api/users/:id/contributions` | 120 / 分钟 |
 | `GET /api/catalog/compare` | 10 / 分钟 |
 | `POST /api/importer/preview` | 10 / 分钟 |
 
