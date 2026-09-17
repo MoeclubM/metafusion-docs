@@ -169,7 +169,7 @@ group: "api"
 | 创建关系 | `POST /api/catalog/relations` | `catalog.relation.edit` |
 | 更新 / 删除关系 | `PUT / DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 修订历史 | `GET /api/catalog/entities/:id/revisions` | 开放（按可见性过滤） |
-| 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
+| 外部导入 | `GET /api/importer/sources`（可用来源清单）、`POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 
 - **写入粒度**：一条发行链就是多次 `POST /api/catalog/entities`，按依赖顺序提交，保存每步返回的 id；中途失败时停止后续依赖写入，报告已写入的部分，按已落库的事实继续
 - **证据与修订**：每次写入都带 `edit_note` + `sources`（`kind` 为 `url` / `publication` / `self`，`citation` 必填，带 `url` 时必须是合法 HTTP(S)）；服务端同时写修订行与事件，可用 `GET /api/catalog/entities/:id/revisions` 复核
@@ -177,7 +177,7 @@ group: "api"
 - **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回；`kind` / `work_id` / `release_id` / `medium_id` 不可改
 - **状态流转**：新建缺省 `draft`；**发布**就是 PUT 写 `status=published`，要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 走生命周期端点（该端点只做合并与退役，请求体无 `action` 字段）；**已发布条目退回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`（体为 `{expected_version, edit_note, sources}`、不能带 `target_id`，只接受 `published → draft`，其余状态 `400 invalid_status`）
 - **关系码取用**：署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …），角色登场用 `character_in`，作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`，组成用 `includes`；没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`
-- **外部导入**：导入器当前只支持 Bangumi（`source` 留空或 `auto` 都归一为 `bangumi`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。载荷**声明了就必须被兑现**：没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`），`has_release=true` 或带了非空 `release` 却没有 `mediums` 报 `invalid_payload: … requires mediums`（无载体发行改走 `append_release_to_work`），`entity_type` 越出上面四个值报 `invalid_entity_type`；`media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。预览与落库同权限、同一预检判据：预览同样按载荷出站抓取，因此也受限流约束
+- **外部导入**：导入器当前只支持 Bangumi（`source` 去空白、忽略大小写，留空或 `auto` 都归一为 `bangumi`，`preview` 与 `import` 同一套归一化；可选来源以 `GET /api/importer/sources` 为准，清单里只有真有适配器的来源、且不含 `auto`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。载荷**声明了就必须被兑现**：没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`），`has_release=true` 或带了非空 `release` 却没有 `mediums` 报 `invalid_payload: … requires mediums`（无载体发行改走 `append_release_to_work`），`entity_type` 越出上面四个值报 `invalid_entity_type`；`media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。预览与落库同权限、同一预检判据：预览同样按载荷出站抓取，因此也受限流约束
 
 ## 7. 可照抄示例
 

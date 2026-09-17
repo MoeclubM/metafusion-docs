@@ -215,14 +215,16 @@ GET /api/catalog/entities/:id/revisions
 
 ## 外部导入
 
-导入当前只对接 **Bangumi**，两个端点都要 `catalog.import.submit`：
+导入当前只对接 **Bangumi**，三个端点都要 `catalog.import.submit`：
 
 | 端点 | 作用 |
 |---|---|
 | `POST /api/importer/preview` | 按 URL / ID 出站抓取并返回结构化预览（分集分页、≤8 并发详情抓取），限流 10/分钟 |
+| `GET /api/importer/sources` | 列出**真有适配器**的来源（`{id, names, category, icon, description, url_pattern}`），供导入弹窗取选项；只读注册表、不出站抓取，因此不限流 |
 | `POST /api/importer/import` | 按预览载荷落库（作品 → 发行 → 载体 → 曲目 → 关系逐次保存，**每条实体各自一个事务**：中途失败不会回滚已写入的前序实体，所以落库前的零写入预检才是整体防线） |
 
-- `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 bangumi），其它来源 `400 not_supported`
+- `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 `bangumi`；去空白、忽略大小写，`preview` 与 `import` 共用同一套归一化），其它来源 `400 not_supported`
+- `GET /api/importer/sources` 的 `id` 是**代码里的适配器集合**（当前只有 `bangumi`），`names` / `category` / `icon` / `description` / `url_pattern` 来自外部权威库注册表（**含停用行**——`is_enabled` 只管外链字段是否出现，不决定有没有导入能力），后台改名 / 换图标后弹窗下次打开即生效；反过来，管理员新增一行注册表**不会**自动出现在这里（适配器是代码事实），`auto` 也不在清单里（它是解析别名，不是来源）
 - `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`
 - `link_mode` 取 `new_work`（默认）/ `append_release_to_work` / `create_relation`；
   `merge_translations` 会被显式拒绝，补译名走常规编辑

@@ -77,7 +77,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 货架规则管理 | `/api/admin/shelves`（含 `/{id}` 读写删） | `catalog.shelves.manage` |
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
-| 外部导入 | `POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
+| 外部导入 | `GET /api/importer/sources`（只读来源清单）、`POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 | 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
 | 用户主页 | `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` | 开放（`email` 字段仅本人可见；资料 / 统计 / 贡献分别见 [认证与凭证](/api-auth)、[社区使用指南](/community-guide)、[实体查询与详情](/api-entities)） |
 | 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`、帖子巡检 `community.post.moderate`（`member` 组默认持有发帖码） |
@@ -112,6 +112,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `POST /api/importer/preview` | 10 / 分钟 |
 
 写接口（实体、关系、生命周期）没有路由级限流，但仍受网关按 IP 的 `30 r/s`（burst 50）约束；
+`GET /api/importer/sources` 只读注册表、不出站抓取，也不额外限流（与 `preview` 的 10 / 分钟无关）；
 `/api/auth/` 与 `/api/setup` 另按 `5 r/s` 限流；`/api/storage/` 同样受 `30 r/s` 约束，只是因为分片上传天然是多请求而把 burst 放大到 100。
 目录服务的路由级限流超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）；
 网关自身的限流由 nginx 直接返回 `429`（`limit_req_status 429`），响应体不是目录服务的错误 JSON。

@@ -137,7 +137,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | `catalog.relation.edit` | 关系创建、替换与删除 | 硬闸：`POST /api/catalog/relations`、`PUT / DELETE /api/catalog/relations/:id` |
 | `catalog.lifecycle.manage` | 发布/处置他人的未发布条目；合并、退役与下架 | 合并/退役硬闸：`POST /api/catalog/entities/:id/lifecycle`；下架硬闸：`POST /api/catalog/entities/:id/unpublish`；发布他人草稿走实体写入 `PUT`（同一权限码判定） |
 | `catalog.definitions.manage` | 定义版本与外部权威库管理 | 硬闸：`/api/admin/catalog-definitions`、`/api/admin/external-databases` |
-| `catalog.import.submit` | 外部导入预览与落库 | 硬闸：`POST /api/importer/preview`、`POST /api/importer/import` |
+| `catalog.import.submit` | 外部导入的来源清单、预览与落库 | 硬闸：`GET /api/importer/sources`、`POST /api/importer/preview`、`POST /api/importer/import` |
 | `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
 
 权限码来自令牌的 `permissions`：带 `*` 即全部目录权限；令牌完全没有 `permissions` 字段时（老令牌或未按权限组配置的实例）才按角色兜底——`admin` 放行全部目录码，`editor` 只放行 `catalog.entity.edit`，其余不放行。
