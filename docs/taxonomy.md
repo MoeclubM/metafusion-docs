@@ -56,10 +56,13 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
   （带求值后的条目，`per_shelf` 默认 12、上限 100）
 - **新建与修改货架需要 `catalog.shelves.manage`**（管理台 `/api/admin/shelves`），普通用户不能自建货架
 - `names` 与其它定义名称同一条硬约束：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`，缺一项返回 `400 four_locale_names_required`
-- 登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 调整首页货架的**顺序与显隐**
-  （请求体 `{ order, hidden }`，slug 去空去重，并按货架 slug 白名单校验——已停用但未删除的货架也算有效，
-  未知 slug 报 `unknown_shelf`）；
-  `/shelves/feed` 会按该偏好重排与隐藏
+- 登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 自定义首页分区：`order` / `hidden` 决定**顺序与显隐**，
+  `sections` 是「覆盖系统货架 + 自建分区」的混合列表（`slug` 与已启用的系统货架同名即覆盖该货架给本人看的
+  `names` / `query` / `sort` / `icon`，不同名即新增分区；最多 20 条，名称至少要有 `zh-CN`，`sort` 取值与系统货架同一闭集）
+- `order` / `hidden` 里的未知 slug 不再报错（旧行为是 `unknown_shelf`），原样保留并在合并时忽略：
+  管理员删掉货架后用户仍能保存偏好，货架以同名重建时排序也立刻恢复
+- `/shelves/feed` 按该偏好合并、重排与隐藏；每条 `shelf` 带 `source`（`system` / `custom`），
+  系统货架即使被用户覆盖也仍是 `system`（前端据此不给「删除分区」入口）
 
 ## 3. 封面比例
 
