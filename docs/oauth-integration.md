@@ -26,7 +26,6 @@ MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（�
 | 发起授权 | `GET /api/oauth/authorize` | 终端用户的浏览器会话 |
 | 授权码换令牌 | `POST /api/oauth/token` | 客户端密钥；带 PKCE 时校验 `code_verifier` |
 | 读取用户信息 | `GET /api/oauth/userinfo` | `Authorization: Bearer <access_token>` |
-| 客户端列表（登录可见） | `GET /api/oauth/clients` | 登录 |
 | 客户端管理与审计 | `/api/admin/oauth/*`、`POST /api/admin/users/{id}/revoke-oauth-tokens` | 权限码 `auth.oauth.manage` |
 | 用户自查与自助撤回 | `GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}` | 登录即可（只作用于本人） |
 
@@ -377,7 +376,9 @@ with urllib.request.urlopen(userinfo_request) as response:
 - 删除客户端**不会**删除审计记录（审计只按 `client_id` 文本关联，不建外键），历史同意与拒绝仍可查。
 - 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、
   `client_secret_rotated`、`client_deleted`、`tokens_revoked`。
-- 另有 `GET /api/oauth/clients`：登录后可见的客户端基本信息列表（不含密钥哈希），供普通用户与前端读取。
+- **全量客户端视图只有管理面**：`GET /api/admin/oauth/clients`（需 `auth.oauth.manage`，见上表）。此前那条登录即可枚举
+  全部 `client_id`、回调白名单、scope、`trusted` / `disabled` / `verified` 与归属的 `GET /api/oauth/clients` 已**整条移除**
+  （不是加闸门）：现在请求它得到 `404`，客户端元数据没有任何登录可见面。
 - **开发者面只服务归属自己的应用**：`/api/developer/apps*` 的列表与读 / 改 / 轮换 / 删一律按归属判定，
   管理员在开发者面也**没有**例外——不属于自己的 `client_id` 返回 `404 client_not_found`（不是 `403`，
   `403` 会泄漏「这个 id 已被占用」）；全部客户端的治理就是上面这张表。

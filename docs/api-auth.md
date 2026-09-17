@@ -163,7 +163,7 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 任何登录用户都可以登记自己的应用，无需管理员：
 
 ```http
-GET    /api/developer/overview              # 接入配置：issuer、端点与 scope 说明
+GET    /api/developer/overview              # 接入配置：issuer、端点与 scope 说明（不含任何客户端清单）
 GET    /api/developer/apps                  # 我的应用
 POST   /api/developer/apps                  # 新建；明文 client_secret 只在这一次响应里出现
 GET    /api/developer/apps/:id
@@ -181,6 +181,9 @@ DELETE /api/developer/apps/:id
   `403`（`403` 会泄漏「这个 id 已被占用」）。配额同样一视同仁；要批量登记或治理别人的客户端走管理面。
 - **系统应用（平台自有、归属为空）只在管理台维护**：开发者面看不到、自助接口也不返回——
   `GET /api/developer/apps` 的「我的应用」只列归属当前账号的应用（归属为空的行永不匹配）。
+- **开发者面不回客户端清单**：`GET /api/developer/overview` 只回接入配置（`issuer` / `account_url` / `endpoints` /
+  `grant_types` / `response_types` / `code_challenge_methods` / `scopes`），系统应用的 `client_id`、回调地址与归属都不出现
+  ——此前那个 `platforms` 字段已连查询一起删除。全量客户端视图只有管理面 `/api/admin/oauth/clients*`。
 - **核验（`verified`）是管理面的动作**：第三方应用自助登记后默认未核验，由管理员在
   `PUT /api/admin/oauth/clients/{id}` 里置 `verified`；未核验的应用在同意页上会多一条「未核验」提示。
   开发者面只读这个状态，不能自证。
