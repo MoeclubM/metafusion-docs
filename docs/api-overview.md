@@ -107,7 +107,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 状态码 | `error` | 含义 |
 |---|---|---|
 | 400 | `invalid_payload` | JSON 形状错误，或含未知字段（服务端拒绝未知字段） |
-| 400 | `invalid_id` | 路径上的 UUID 解析失败 |
+| 400 | `invalid_id` | 目录侧路径上的 UUID 解析失败（如 `/api/catalog/entities/:id`、`/relations/:id`）；用户主页三条路径 `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` 的非 UUID 一律 `404 not_found` |
 | 400 | `evidence_required` | 写入没带 `edit_note` 或 `sources` |
 | 400 | `invalid_source` | `sources` 项不合法：`kind` 只接受 `url` / `publication` / `self`，`citation` 不能为空，`url` 必须是合法链接 |
 | 400 | `invalid_reference` | 引用的实体不存在、kind 不符或对调用者不可见 |
@@ -122,7 +122,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `compare_requires_two_to_six` | 对比的 `ids` 少于 2 个或多于 6 个（`/compare` 只接 Release，非 Release 报 `invalid_kind`） |
 | 401 | `authentication_required` | 需要登录的端点未带有效令牌 |
 | 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者） |
-| 404 | `not_found` | 不存在，或对调用者不可见（不区分「不存在」与「无权限」） |
+| 404 | `not_found` | 不存在，或对调用者不可见（不区分「不存在」与「无权限」）；用户主页三条路径上非 UUID 的 id 也归这里 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致：重读实体后再写 |
 | 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避（网关自身的 429 无该头，也不带此 JSON 体） |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） |

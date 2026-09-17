@@ -151,7 +151,7 @@ GET /api/users/:id/contributions?tab=all&page=1&page_size=20
 
 可见性与实体列表同一口径（未发布只对创建者与持 `catalog.lifecycle.manage` 者可见，`deleted` / `merged` 对所有人不可见），因此列表与统计都不会泄漏草稿。贡献归属取自修订行的 actor 快照列，**不 JOIN 账号表**：目录服务不判断"用户是否存在"（没有任何修订就是零贡献），也不返回昵称与头像（那些字段见 [认证与凭证](/api-auth) 的公开账号资料）。
 
-错误码：`:id` 不是 UUID 是 `400 invalid_id`（目录服务把路径参数交给 UUID 解析，与 `/api/users/:id` 的 `404` 口径不同）；`tab` 非法是 `400 invalid_tab`；本路由限流 120 / 分钟，超限 `429 rate_limited` 并带 `Retry-After`。
+错误码：`:id` 不是 UUID 是 `404 not_found`——与账号 `GET /api/users/:id`、互动 `GET /api/users/:id/stats` 同口径（用户主页把三路数据源按同一类降级处理，回 `400` 会把「这个来源取不到」讲成「参数错误」）；`tab` 非法仍是 `400 invalid_tab`；本路由限流 120 / 分钟，超限 `429 rate_limited` 并带 `Retry-After`。**「账号不存在」与「有这个人但一条贡献都没有」分不出来**：账号表归账号服务、目录不查它，两者都是 `200` 加空列表与 0 计数——`404` 只留给「这个 id 不是 UUID」。
 
 ## 分页
 
