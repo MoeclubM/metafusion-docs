@@ -25,7 +25,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 前端路由
 
-作品、发行版、载体有专用详情路由 `/works/[id]`、`/releases/[id]`、`/mediums/[id]`；通用兜底与编辑入口为 `/catalog/[id]`（未知 kind 与 `?edit=1` 直达编辑）。探索为 `/explore`，对比为 `/compare`，创建为 `/new`，管理后台为 `/admin`（**只管理元数据目录**：实体、定义、货架、外部库、导入审核；账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」）。
+作品、发行版、载体有专用详情路由 `/works/[id]`、`/releases/[id]`、`/mediums/[id]`；通用兜底与编辑入口为 `/catalog/[id]`（未知 kind 与 `?edit=1` 直达编辑）。探索为 `/explore`，对比为 `/compare`，创建入口为 `/new`（不带层级时落到编目枢纽 `/contribute`），管理后台为 `/admin`（**只管理元数据目录**：实体、定义、货架、外部库、导入审核；账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」）。
 
 ## 七个编目例子
 

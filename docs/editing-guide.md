@@ -53,6 +53,9 @@ MetaFusion 是一个由社区共同维护的开放元数据平台。具备编辑
 为便于自动化识别，实体可关联外部权威 ID（写入 `external_ids`）。键必须已在实例登记的
 外部库清单里（见 `GET /api/catalog/external-databases`），常用来源：
 
+> 这一节是**可登记的外部 ID 键**，不等于可一键导入的来源：导入适配器目前只有 Bangumi 一个，
+> 以 `GET /api/importer/sources` 为准（见 [新建与编辑](/api-edit) 的「外部导入」）。
+
 - **音乐**：MusicBrainz、VGMdb、ISRC
 - **动画 / 影视**：Bangumi、AniList、IMDb、TMDb
 - **图书 / 视觉小说**：ISBNdb（`isbndb`）、VNDB（`vndb`）、豆瓣读书（`douban_book`）
