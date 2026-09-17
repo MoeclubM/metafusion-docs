@@ -7,8 +7,9 @@ group: "api"
 
 # 新建与编辑
 
-目录写入只有三个入口：**实体用 `/api/catalog/entities`，关系用 `/api/catalog/relations`，
-合并 / 退役用 `/api/catalog/entities/:id/lifecycle`**。
+目录写入只有四个入口：**实体用 `/api/catalog/entities`，关系用 `/api/catalog/relations`，
+合并 / 退役用 `/api/catalog/entities/:id/lifecycle`，下架（`published → draft`）用
+`/api/catalog/entities/:id/unpublish`**。
 按层级逐条写入，每次请求只落一条实体或一条关系。
 
 ## 前提：认证与权限码
@@ -19,7 +20,7 @@ group: "api"
 |---|---|
 | `catalog.entity.edit` | 创建与编辑实体（含维护公开条目） |
 | `catalog.relation.edit` | 创建 / 替换 / 删除关系 |
-| `catalog.lifecycle.manage` | 合并、退役，以及发布/处置他人的未发布条目 |
+| `catalog.lifecycle.manage` | 合并、退役、下架（`published → draft`），以及发布/处置他人的未发布条目 |
 | `catalog.definitions.manage` | 起草、校验、发布动态定义 |
 | `catalog.import.submit` | 调用外部导入的预览与落库 |
 | `catalog.shelves.manage` | 维护货架规则 |
@@ -113,8 +114,8 @@ PUT /api/catalog/entities/:id
 - `expected_version` 与当前版本不一致返回 `409 version_conflict`：重读后再写，不要盲目重试
 - **发布**就是 PUT 写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`
 - `deleted` / `merged` 走生命周期端点；PUT 提交这两个状态返回 `400 use_lifecycle_endpoint`
-- **已发布条目改回 `draft` 当前没有通道**：PUT 提交降级同样返回 `400 use_lifecycle_endpoint`，
-  生命周期端点也只做合并与退役。发布前请确认内容已定稿，内容有误时按勘误流程改字段重发，而不是退回重写
+- **已发布条目改回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`（见下「下架」）：
+  PUT 提交降级仍然返回 `400 use_lifecycle_endpoint`——降级只有这一条通道
 
 ## 关系
 
@@ -163,7 +164,7 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 `includes` 等声明 `acyclic` 的码会做环路检测；同一角色跨作品用多条 `character_in`。
 外部来源的职位若没有贴切的码，用 `credit_for` + `credit_role` 保真，不要虚构新码。
 
-## 生命周期：合并与退役
+## 生命周期：合并、退役与下架
 
 ```http
 POST /api/catalog/entities/:id/lifecycle
@@ -181,6 +182,26 @@ POST /api/catalog/entities/:id/lifecycle
 - 两个动作都需要 `catalog.lifecycle.manage`；请求体是 `{target_id?, expected_version, edit_note, sources}`，
   **没有 `action` 字段**——合并与退役由 `target_id` 有无决定，带 `{"action":"publish"}` 会 `400 invalid_payload`
 - 状态集合是 `draft` / `pending_review` / `published` / `deleted` / `merged` 五档，中间态只有待审一档
+
+### 下架（`published → draft`）
+
+```http
+POST /api/catalog/entities/:id/unpublish
+{ "expected_version": 3, "edit_note": "线上条目内容有误，退回草稿修订",
+  "sources": [{ "kind": "url", "citation": "读者反馈的官方原文", "url": "https://example.com" }] }
+```
+
+- 状态机里**唯一**的降级入口：只接受 `published → draft`；`draft` / `pending_review` 没有可下架的内容，
+  `deleted` / `merged` 是终态，四种情况都是 `400 invalid_status`
+- 请求体是 `{expected_version, edit_note, sources}`，**没有 `target_id`**——下架只改自身状态，带上会被拒成 `400 invalid_payload`
+- 证据要求与其它写入一致（`edit_note` 非空 + 至少一条 `sources`，否则 `400 evidence_required` / `invalid_source`）；
+  `expected_version` 与当前版本不一致返回 `409 version_conflict`（版本条件先判，即使实体已不在 `published` 也是 409）
+- 成功返回与实体写入同形状的**完整实体**（`status` 为 `draft`、`version` 已 +1）；同一事务写一条修订行
+  （`GET /api/catalog/entities/:id/revisions` 可查）与一条 `entity.unpublished` 事件
+- 需要 `catalog.lifecycle.manage`（与合并 / 退役同一档：能清退的人才能下架）；未登录 `401 authentication_required`，
+  缺码 `403 forbidden`；id 不存在是 `404 not_found`，状态不对是 `400 invalid_status`（两者不混同）
+- 下架**不计入**贡献统计的 `audit_actions`（那里只数 `entity.deleted` / `entity.merged`）：下架不是清退；
+  修订行仍落在操作者名下，贡献流与修订历史都能查到这次改动（可见性照旧）
 
 ## 修订历史
 

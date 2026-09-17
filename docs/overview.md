@@ -46,7 +46,7 @@ MetaFusion 整体采用**「元数据系统为主项目，周边外围子系统�
 |---|---|---|
 | 基础元数据 | 开放浏览与检索 | Work / Release / Medium / Track 等实体详情、标签与货架体系、关系图谱、关键词检索（标题与译文子串匹配）、社区公开讨论 |
 | 资源操作 | 需登录用户 | 原档下载（需至少一个绑定实体对调用者可见）、分片上传与哈希秒传、发帖/回帖 |
-| 词条维护 | 需登录用户 | 新建作品/发行版/创作者、修改元数据、提交审核、查看修订历史；合并与退役按 `catalog.lifecycle.manage` 授权 |
+| 词条维护 | 需登录用户 | 新建作品/发行版/创作者、修改元数据、提交审核、查看修订历史；合并、退役与下架按 `catalog.lifecycle.manage` 授权 |
 | 系统管理 | 按权限码授权 | 实例设置（`auth.settings.manage`）、权限组与用户（`auth.groups.manage` / `auth.users.manage`）、邀请码签发（`auth.invites.manage`）、OAuth 客户端与客户端审计（`auth.oauth.manage`）、类型与关系定义（`catalog.definitions.manage`）、货架与外部库规则（`catalog.shelves.manage`）、编目审核与实体合并（`catalog.lifecycle.manage`） |
 
 ## 快速入口

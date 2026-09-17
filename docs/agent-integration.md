@@ -165,7 +165,7 @@ group: "api"
 | --- | --- | --- |
 | 创建实体 | `POST /api/catalog/entities` | 登录；直接发布需 `catalog.entity.edit`（或 `catalog.lifecycle.manage`） |
 | 更新实体 | `PUT /api/catalog/entities/:id` | 同上，且必须是该条目的可写者 |
-| 合并 / 退役 | `POST /api/catalog/entities/:id/lifecycle` | `catalog.lifecycle.manage` |
+| 合并 / 退役 / 下架 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役）、`POST /api/catalog/entities/:id/unpublish`（`published → draft`） | `catalog.lifecycle.manage` |
 | 创建关系 | `POST /api/catalog/relations` | `catalog.relation.edit` |
 | 更新 / 删除关系 | `PUT / DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 修订历史 | `GET /api/catalog/entities/:id/revisions` | 开放（按可见性过滤） |
@@ -175,7 +175,7 @@ group: "api"
 - **证据与修订**：每次写入都带 `edit_note` + `sources`（`kind` 为 `url` / `publication` / `self`，`citation` 必填，带 `url` 时必须是合法 HTTP(S)）；服务端同时写修订行与事件，可用 `GET /api/catalog/entities/:id/revisions` 复核
 - **幂等**：`POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头（进程内存 24 小时，缓存键为「路由 + 用户 + key」，不做载荷哈希）；更新与删除靠 `expected_version`，不要在 409 之后盲目重复创建
 - **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回；`kind` / `work_id` / `release_id` / `medium_id` 不可改
-- **状态流转**：新建缺省 `draft`；**发布**就是 PUT 写 `status=published`，要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 走生命周期端点（该端点只做合并与退役，请求体无 `action` 字段）；**已发布条目退回 `draft` 当前没有通道**
+- **状态流转**：新建缺省 `draft`；**发布**就是 PUT 写 `status=published`，要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 走生命周期端点（该端点只做合并与退役，请求体无 `action` 字段）；**已发布条目退回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`（体为 `{expected_version, edit_note, sources}`、不能带 `target_id`，只接受 `published → draft`，其余状态 `400 invalid_status`）
 - **关系码取用**：署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …），角色登场用 `character_in`，作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`，组成用 `includes`；没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`
 - **外部导入**：导入器当前只支持 Bangumi（`source` 留空或 `auto` 都归一为 `bangumi`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。载荷**声明了就必须被兑现**：没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`），`has_release=true` 或带了非空 `release` 却没有 `mediums` 报 `invalid_payload: … requires mediums`（无载体发行改走 `append_release_to_work`），`entity_type` 越出上面四个值报 `invalid_entity_type`；`media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。预览与落库同权限、同一预检判据：预览同样按载荷出站抓取，因此也受限流约束
 
@@ -448,10 +448,11 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 | `400 invalid_reference` | 引用的实体不存在、kind 不符或不可见（含引用未发布的实体去发布） | 先读该实体；合并过的先用 `/resolve` |
 | `400 constraint_violation` | 跨 Work 的父子、跨 Release 的载体父子等 | 父子只能在同一 Work / Release / Medium 内 |
 | `400 translation_required` | 发布态没有 `translations` | 至少补一条翻译行再发布 |
-| `400 use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 停用/合并改走 `POST /api/catalog/entities/:id/lifecycle`；退回 `draft` 没有可用通道 |
+| `400 use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 停用/合并改走 `POST /api/catalog/entities/:id/lifecycle`；退回 `draft` 改走 `POST /api/catalog/entities/:id/unpublish`（需 `catalog.lifecycle.manage`） |
+| `400 invalid_status` | 状态机不允许这个动作：下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体 | 先读回当前 `status`：已是 `draft` 就不必下架；`deleted` / `merged` 要恢复只能新建 |
 | `400 relation_cycle` / `invalid_endpoints` / `duplicate_relation` | 无环关系成环、两端 kind 不允许（含自环）、重复边 | 按 definitions 的端点与无环声明改方向；先删冲突旧边 |
 | `400 invalid_term` / `invalid_type` | 词表值或业务类型不在定义内 | 用 definitions 的 `terms` 与 `types`，不要按字面猜 |
-| `401 authentication_required` / `403 forbidden` | 令牌无效，或缺权限码、不是该条目的可写者 | 重新登录；发布、合并归生命周期权限 |
+| `401 authentication_required` / `403 forbidden` | 令牌无效，或缺权限码、不是该条目的可写者 | 重新登录；发布、合并与下架归生命周期权限 |
 | `404 not_found` | 不存在，或对调用者不可见 | 未发布条目只对创建者与持权限者可见 |
 | `409 version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
 | `429 rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避 |

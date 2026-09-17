@@ -43,8 +43,11 @@ group: "guide"
 | `published` | 已发布，公开可见（发布要求至少一条翻译行） |
 | `deleted` / `merged` | 已停用 / 已合并，仅创建者与持 `catalog.lifecycle.manage` 者直读；合并的用 `/resolve` 跟随 |
 
+发布后要大幅重写时，由持 `catalog.lifecycle.manage` 的成员用 `POST /api/catalog/entities/:id/unpublish` 把条目下架回 `draft`
+（只接受 `published → draft`，要带 `expected_version` 与修改说明 / 来源；下架会在修订历史里留痕），改完按正常流程重新发布。
+
 收到审核意见时，按意见补齐来源或修正结构后再提交。修正他人已发布条目需要编辑权限；
-合并与停用需要 `catalog.lifecycle.manage`。
+合并、停用与下架需要 `catalog.lifecycle.manage`。
 
 ## 4. 记录与权限
 

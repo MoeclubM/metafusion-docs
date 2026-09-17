@@ -51,7 +51,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
 | 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；`catalog.entity.edit` 决定能否协作维护他人/公开条目与直接发布，无此码者只能存 `draft` / `pending_review` |
 | 关系写入 | `POST /api/catalog/relations`、`PUT\|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
-| 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役） | `catalog.lifecycle.manage` |
+| 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役）、`POST /api/catalog/entities/:id/unpublish`（下架：`published → draft`） | `catalog.lifecycle.manage` |
 | 发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个 Release） | 开放 |
 | 标签聚合 | `GET /api/catalog/tags`（按已发布实体的 `attributes.tags` 统计频次） | 开放 |
 | 货架 | `GET /api/catalog/shelves`、`GET /api/catalog/shelves/feed` | 开放 |
@@ -71,7 +71,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 ## 访问模型
 
 - **元数据开放**：`/api/catalog/*` 的读接口无需鉴权，可被搜索引擎收录
-- **写入受控**：实体写入只需登录（无 `catalog.entity.edit` 时提交的状态被收敛为 `draft` / `pending_review`，见 [新建与编辑](/api-edit)）；合并 / 退役另需 `catalog.lifecycle.manage`
+- **写入受控**：实体写入只需登录（无 `catalog.entity.edit` 时提交的状态被收敛为 `draft` / `pending_review`，见 [新建与编辑](/api-edit)）；合并 / 退役 / 下架另需 `catalog.lifecycle.manage`
 - **未发布内容不公开**：`draft` / `pending_review` 只有创建者（与持生命周期权限者）能读；`deleted` / `merged` 只有创建者能直读
 
 ## 分页与排序
@@ -113,12 +113,13 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `invalid_reference` | 引用的实体不存在、kind 不符或对调用者不可见 |
 | 400 | `constraint_violation` | 违反库内约束（复合外键、唯一索引等） |
 | 400 | `immutable_scope` | 改动了不可变归属：`kind` / `work_id` / `release_id` / `medium_id` |
-| 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged`（停用与合并走生命周期端点；退回 `draft` 当前没有通道） |
+| 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged`（停用与合并走生命周期端点；退回 `draft` 走下架端点 `POST /api/catalog/entities/:id/unpublish`，PUT 提交降级一律回这个码） |
 | 400 | `translation_required` | 发布时一条 `translations` 都没有 |
 | 400 | `four_locale_names_required` | 定义文档 / 货架 / 外部权威库里的名称缺语种：`error` 形如 `four_locale_names_required: zh-TW,ja-JP`，冒号后是缺失的语种 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段不存在 |
 | 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系写入的语义校验失败（见 [新建与编辑](/api-edit)） |
 | 400 | `invalid_merge_target` | 合并目标不是同 kind、同归属的已发布实体 |
+| 400 | `invalid_status` | 状态机不允许这个动作：下架只接受 `published`（`draft` / `pending_review` 没有可下架的内容，`deleted` / `merged` 是终态），生命周期端点对已 `deleted` / `merged` 的实体也回这个码 |
 | 400 | `compare_requires_two_to_six` | 对比的 `ids` 少于 2 个或多于 6 个（`/compare` 只接 Release，非 Release 报 `invalid_kind`） |
 | 401 | `authentication_required` | 需要登录的端点未带有效令牌 |
 | 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者） |
@@ -138,6 +139,8 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `merged` | 已合并，`redirect_id` 指向保留实体 | 创建者可直读；用 `GET /api/catalog/entities/:id/resolve` 取到保留实体 |
 
 列表接口的可见性口径：匿名只看 `published`；登录用户看 `published` 加自己创建的全部条目；持 `catalog.lifecycle.manage` 看全量（`deleted` / `merged` 除外）。
+
+降级只有一条通道：`published → draft` 走 `POST /api/catalog/entities/:id/unpublish`（需 `catalog.lifecycle.manage`，同一套证据与乐观锁，同一事务写修订行与 `entity.unpublished` 事件）；`deleted` / `merged` 是终态，要恢复只能新建。
 
 ## 下一步
 

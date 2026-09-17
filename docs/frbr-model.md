@@ -81,7 +81,8 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 
 每次写入都会落修订行（操作者、`edit_note`、`sources`、快照），用
 `GET /api/catalog/entities/:id/revisions` 读取；合并与退役只能经
-`POST /api/catalog/entities/:id/lifecycle`。详见 [新建与编辑](/api-edit)。
+`POST /api/catalog/entities/:id/lifecycle`，`published → draft` 的下架经
+`POST /api/catalog/entities/:id/unpublish`。详见 [新建与编辑](/api-edit)。
 
 ## 表达复用：为什么不需要「典范条目」实体
 
