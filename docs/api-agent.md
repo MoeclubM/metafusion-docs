@@ -197,7 +197,7 @@ POST /api/catalog/entities/:id/lifecycle
 
 - **Idempotency-Key**：只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认这个请求头。缓存键是「路由 + 用户 + key」，命中直接返回首创结果、不建重复数据；存活 24 小时，存在**进程内存**里，重启即失效，也不做载荷哈希——同一个 key 换了载荷不会报冲突，会照首发结果返回。并发同 key 不保证单飞，重试前先回读确认。
 - **更新与删除不用幂等键**，靠 `expected_version`：收到 `409 version_conflict` 就回读实体取最新 version 再重放，不要盲目重复创建。
-- **限流**：`GET /api/catalog/entities` 120/分钟、`GET /api/catalog/tags` 120/分钟、`POST /api/catalog/expressions/details` 120/分钟、`GET /api/catalog/shelves/feed` 60/分钟、`GET /api/catalog/compare` 10/分钟、`POST /api/importer/preview` 10/分钟（按 IP + 路由、进程内存固定窗口）。写入接口没有路由级限流，但仍受网关按 IP 的约束。超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
+- **限流**：`GET /api/catalog/entities` 120/分钟、`GET /api/catalog/tags` 120/分钟、`POST /api/catalog/expressions/details` 120/分钟、`GET /api/catalog/shelves/feed` 60/分钟、`GET /api/users/:id/contributions` 120/分钟、`GET /api/catalog/compare` 10/分钟、`POST /api/importer/preview` 10/分钟（按 IP + 路由、进程内存固定窗口）。写入接口没有路由级限流，但仍受网关按 IP 的约束。超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
 
 ## 6. 错误码与自愈策略
 

@@ -48,7 +48,7 @@ A：先确认已携带有效会话（`Authorization: Bearer <token>` 或 Cookie 
 A：限流按 IP 计数、不区分是否登录，实际共有三层：
 
 - **账号服务**：认证写入类接口（`POST /api/setup`、`POST /api/auth/login`、`POST /api/auth/refresh`、`POST /api/auth/register`）按 IP 15 次/分钟（进程内存固定窗口）；
-- **目录服务的路由级限流**（按 IP + 路由计数）：`GET /api/catalog/entities`、`GET /api/catalog/tags`、`POST /api/catalog/expressions/details` 各 120 次/分钟，`GET /api/catalog/shelves/feed` 60 次/分钟，`GET /api/catalog/compare`、`POST /api/importer/preview` 各 10 次/分钟；
+- **目录服务的路由级限流**（按 IP + 路由计数）：`GET /api/catalog/entities`、`GET /api/catalog/tags`、`POST /api/catalog/expressions/details` 各 120 次/分钟，`GET /api/catalog/shelves/feed` 60 次/分钟，`GET /api/users/:id/contributions` 120 次/分钟，`GET /api/catalog/compare`、`POST /api/importer/preview` 各 10 次/分钟；
 - **网关限流**（按 IP）：`/api/` 与 `/api/catalog/` 30 r/s（burst 50），`/api/auth/` 与 `/api/setup` 5 r/s、burst 10，`/api/storage/` 30 r/s、burst 100（分片上传天然是多请求，故只放大突发额度）。
 
 三层超限都返回 `429`。目录服务的路由级限流会带 `Retry-After`（秒），按该头退避即可；网关自身拦下的 `429` 不带该头，按秒级退避重试。**没有**全站「匿名 60 次/分钟、登录 600 次/分钟」这类配额，响应里也**没有** `X-RateLimit-*` 头。

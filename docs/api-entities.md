@@ -123,6 +123,36 @@ POST /api/catalog/expressions/details
 
 `compare` 的 `ids` 少于 2 或多于 6 返回 `compare_requires_two_to_six`，非 Release 实体返回 `invalid_kind`。
 
+## 用户贡献流
+
+用户主页的贡献视图（前端 `all` / `revisions` / `works` / `releases` / `artists` 五个 tab）由目录服务提供：
+
+```http
+GET /api/users/:id/contributions?tab=all&page=1&page_size=20
+```
+
+| 参数 | 说明 |
+|---|---|
+| `tab` | `all`（默认：创建事件与后续改动按时间混排）、`revisions`（全部实体修订行，含首次创建）、`works` / `releases` / `artists`（只列该用户创建的对应实体）；其余取值 `400 invalid_tab`——topics / comments 一类属互动服务的口径，不在这里静默返回空列表 |
+| `page` / `page_size` | `page` 从 1 起、`page_size` 默认 20 上限 100，越界静默收敛（不报错），与其它列表接口同一风格 |
+
+响应 `{items, total, page, page_size, stats}`：`total` 是同口径下的真实计数（不是本页条数），`page` / `page_size` 是收敛后的取值；`stats` 恒为五个**全量**计数，不随 `tab` 变化：
+
+| 字段 | 口径 |
+|---|---|
+| `works_created` / `releases_created` / `artists_created` | 该用户创建的对应实体（前端的 `artists` 对应骨架里的 `agent` kind）：即 version=1 的首次修订条数，且该实体当前对请求方可见 |
+| `revisions_count` | 该用户在可见实体上的全部修订行数（含首次创建行） |
+| `audit_actions` | 该用户执行过的生命周期管理动作次数（`entity.deleted` / `entity.merged`）；**不随目标当前状态变化**——删除与合并会把目标移出可见集，若也套可见性过滤这个数字恒为 0 |
+
+`items` 有两种项，字段沿用既有端点：
+
+- **创建项**（`works` / `releases` / `artists` tab，以及 `all` 里的创建事件）：`id` 是实体 id，带 `tab`（对应该实体所属 tab）、`status` 与实体自身的 `updated_at`，`edit_type` 为 `create`
+- **修订项**（`revisions` tab，以及 `all` 里的后续改动）：`id` 是修订行 id，实体 id 落在 `target_id`，带 `version` / `edit_note` / `sources` / `created_at`；`version > 1` 时 `edit_type` 为 `update` 并带 `diff`（字段级的 `old` / `new`，`attributes` 与 `translations` 下钻一层，如 `attributes.tags`、`translations.zh-CN`；`id` / `version` / `created_by` / `created_at` / `updated_at` 这类每次都会变的键不进差异，单个值超过 512 字节时截断成字符串前缀）
+
+可见性与实体列表同一口径（未发布只对创建者与持 `catalog.lifecycle.manage` 者可见，`deleted` / `merged` 对所有人不可见），因此列表与统计都不会泄漏草稿。贡献归属取自修订行的 actor 快照列，**不 JOIN 账号表**：目录服务不判断"用户是否存在"（没有任何修订就是零贡献），也不返回昵称与头像（那些字段见 [认证与凭证](/api-auth) 的公开账号资料）。
+
+错误码：`:id` 不是 UUID 是 `400 invalid_id`（目录服务把路径参数交给 UUID 解析，与 `/api/users/:id` 的 `404` 口径不同）；`tab` 非法是 `400 invalid_tab`；本路由限流 120 / 分钟，超限 `429 rate_limited` 并带 `Retry-After`。
+
 ## 分页
 
 - `limit` / `offset`；`limit` 默认 50、上限 100（越界静默按 50）
