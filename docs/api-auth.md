@@ -98,6 +98,30 @@ DELETE /api/auth/oauth-grants/{client_id}      # 需登录：撤回我对该应�
 管理面的按客户端 / 按用户吊销（`/api/admin/oauth/clients/{id}/revoke-tokens`、
 `/api/admin/users/{id}/revoke-oauth-tokens`，需 `auth.oauth.manage`）保留给治理场景。
 
+## 公开账号资料
+
+```http
+GET /api/users/{id}   # 匿名可读：某账号的公开资料
+```
+
+响应 `{ "user": {...}, "stats": {...} }`：
+
+```json
+{
+  "user": { "id": "<uuid>", "username": "moe", "role": "editor", "email": "moe@example.com" },
+  "stats": { "invited_count": 3 }
+}
+```
+
+- 字段只来自 `auth.users` 里**真实存在的列**：`id` / `username` / `role` / `banned` / `email`。**没有** `display_name` / `avatar_url` / `bio` / `created_at`——账号库里没有这些列，接口也不填占位值（空字符串会被读成"这个人就是没头像"，而事实是"没有这个来源"）
+- `email` 只在请求者就是本人时下发（带本人令牌或 Cookie）；匿名与看别人都缺省。`banned` 与管理台 `GET /api/admin/users` 同一口径：只在为真时出现
+- **被封禁的账号照样返回资料**（带 `"banned": true`）：封禁是访问控制（不能登录 / 续期 / 验签），不是"这个人不存在"——他的历史贡献与别人会话里的引用都还指向这个 id，回 404 会让其它服务里的链接整片失效
+- `stats.invited_count` 是"该用户邀请成功的人数"：只算真被用掉、并因此注册成功的邀请（`auth.invite_uses` 记录谁用了哪个码，码归 `auth.invites.created_by` 所有）；同一个人被同一邀请人的多个码拉进来只算一次；码之后被吊销或过期不回溯扣减，已被封禁的受邀者也计入
+- 非 UUID 与查不到的 id 都返回 `404` + `{"error":"not_found"}`，两种情况不区分
+- 网关把恰好一段路径的 `/api/users/{id}` 分流到账号服务；`/api/users/{id}/stats`、`/api/users/{id}/favorites` 归互动服务，`/api/users/{id}/contributions` 归目录服务（矩阵见 [API 概览](/api-overview)）
+
+用户主页的另外两组数据各由对应服务提供：三个互动数字（主题 / 回复 / 收藏）见 [社区使用指南](/community-guide)，目录侧贡献流见 [实体查询与详情](/api-entities)。
+
 ## 管理台端点
 
 | 端点 | 权限码 |
