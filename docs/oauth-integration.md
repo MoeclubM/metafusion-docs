@@ -411,7 +411,7 @@ DELETE /api/auth/oauth-grants/{client_id}
 > 每个账号最多 20 个应用（超限 `app_quota_exceeded`）。
 > 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
 
-管理台（`/admin`）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。
+账号管理台（`/admin/account/`，由 `metafusion-auth` 的 `admin/` 独立构建）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。主站的 `/admin` 只管理元数据目录，OAuth 客户端治理不在那里（见 [平台概览](/overview) 的「管理台按域拆分」）。
 
 | 想做的事 | 界面位置 |
 | --- | --- |

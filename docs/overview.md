@@ -37,8 +37,21 @@ MetaFusion 整体采用**「元数据系统为主项目，周边外围子系统�
 - **账号与身份认证中心 (metafusion-auth)**：独立身份服务，提供注册与登录、令牌签发（RS256 访问令牌 + 服务端会话）、基于权限组与权限码的授权、OAuth 2.0 / OIDC 接入与实例准入设置。
 - **资源存储与下载管理中枢 (metafusion-storage)**：原始文件归档与分发，支持本地对象模式与 S3 对象存储、sha256 内容寻址校验，并按绑定实体可见性授权下载（不做转码）。
 - **社区交流与论坛系统 (metafusion-community)**：独立讨论板块与主题回复，以及实体短评、收藏与互动记录。
-- **API 网关与边缘路由**：单端口 Nginx 反向代理，按 `/api/*` 前缀把流量分流到目录、账号、互动与存储，并把 `/docs` 反代到文档站；生效矩阵在主仓库 `deploy/nginx.conf`（compose 的 `gateway` 服务）。`metafusion-api-gateway` 仓库现在只剩切流自检脚本，旧矩阵已归档、不参与部署。
+- **API 网关与边缘路由**：单端口 Nginx 反向代理，按 `/api/*` 前缀把流量分流到目录、账号、互动与存储，并把 `/docs` 反代到文档站、把三个自带管理台按 `/admin/account/`、`/admin/community/`、`/admin/storage/` 挂到同一个域；生效矩阵在主仓库 `deploy/nginx.conf`（compose 的 `gateway` 服务）。`metafusion-api-gateway` 仓库现在只剩切流自检脚本，旧矩阵已归档、不参与部署。
 - **开发者文档站点 (metafusion-docs)**：独立 VitePress 文档工程，承载对外规范、API 文档与 Agent 接入指引。
+
+## 管理台按域拆分
+
+四个管理台是**四个独立应用**（各自构建与发布），网关在同一个域下按路径聚合。**主站的 `/admin` 现在只管理元数据目录**——账号、社区、存储的管理面已各自独立，这是最容易被误解的一点：
+
+| 要管什么 | 去哪里 | 走哪些接口 |
+|---|---|---|
+| 元数据目录：实体、动态定义、货架、外部权威库、导入审核 | `/admin` | `/api/catalog/*`、`/api/admin/catalog-definitions`、`/api/admin/shelves`、`/api/admin/external-databases` |
+| 用户、权限组、邀请码、实例设置、OAuth 客户端 | `/admin/account/` | `/api/admin/{users,groups,permissions,settings,invites,oauth}` |
+| 板块配置、主题、帖子治理 | `/admin/community/` | `/api/community/*` |
+| 存储用量、资产查询、绑定解绑 | `/admin/storage/` | `/api/storage/*` |
+
+三个自带管理台分别由 `metafusion-auth`、`metafusion-community`、`metafusion-storage` 的 `admin/` 目录承载，与主前端并列，不经主前端路由；三个自带管理台的路径不带尾斜杠时由网关 301 到带尾斜杠的形式（主站 `/admin` 归主前端自己处理）。页面路径不受 `/api/` 的限流口径约束（网关只对 `/api/` 挂限流），界面里的数据请求仍旧走 `/api/*`、按各自权限码放行。
 
 ## 访问与权限模型
 

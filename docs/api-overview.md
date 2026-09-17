@@ -41,6 +41,22 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 
 归属以主仓库 `deploy/nginx.conf` 的生效矩阵为准。
 
+### 管理台（页面路径）
+
+四个管理台是**四个独立应用**，由网关在同一域下按路径聚合；它们的数据请求仍旧走 `/api/*`，由上面的矩阵分流回对应服务：
+
+| 控制台 | 页面路径 | 归属 |
+|---|---|---|
+| 目录（元数据：实体 / 定义 / 货架 / 外部库 / 导入审核） | `/admin` | 主前端 `frontend/`（主仓库，见 [元数据目录](/catalog)） |
+| 账号（用户、权限组、邀请码、实例设置、OAuth 客户端） | `/admin/account/` | `metafusion-auth/admin/`（独立构建与发布） |
+| 社区（板块、主题、帖子治理） | `/admin/community/` | `metafusion-community/admin/` |
+| 存储（用量总览、资产查询、绑定解绑） | `/admin/storage/` | `metafusion-storage/admin/` |
+
+- 三条两段前缀与主站的 `location /`（含目录控制台 `/admin`）互不重叠：nginx 前缀更长者胜，所以主站的 `/admin` 不受影响
+- 不带尾斜杠的裸路径由 `location =` 精确匹配 301 补齐（`/admin/account` → `/admin/account/`），否则会被最宽的 `location /` 兜给主前端、表现为 404
+- 它们是**页面路径、不是 `/api/` 路径**：网关只对 `/api/` 下的 location 挂 `limit_req`，因此这四个管理台（与 `/docs` 同类）**不套 `/api/` 的限流口径**——不是漏配，别按 `/api/` 的 30 r/s 去估算或补一条限流
+- 管理台自身的访问控制由应用鉴权 + 数据接口上的权限码共同决定（例如账号管理台调 `/api/admin/users` 仍要 `auth.users.manage`）
+
 ## 能力分组
 
 | 能力 | 真实端点 | 认证 |

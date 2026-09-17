@@ -13,7 +13,7 @@ group: "meta"
 A：取决于实例设置。注册默认关闭（`registration_enabled`），由持 `auth.settings.manage` 权限的成员打开；打开后若 `invite_required` 为真，注册必须带有效邀请码（缺少为 `invite_required`，无效为 `invalid_invite_code`）。登录页会按当前设置提示并显示邀请码输入框。
 
 **Q：在哪里获取我的邀请码？**  
-A：邀请码由持 `auth.invites.manage` 权限的成员签发：登录后在个人邀请页（`/invites`）或管理台签发（`GET|POST /api/auth/invite`），可设 `note`、使用次数（缺省 1、上限 1000）与有效期（不给即长期有效）。
+A：邀请码由持 `auth.invites.manage` 权限的成员签发：登录后在个人邀请页（`/invites`）或账号管理台（`/admin/account/invites/`）签发（`GET|POST /api/auth/invite`），可设 `note`、使用次数（缺省 1、上限 1000）与有效期（不给即长期有效）。
 
 邀请码是 16 位十六进制分组，形如 `A1B2-C3D4-E5F6-7890`，没有 `MF-` 前缀；页面同时列出由本人签发的码与其带来的成员。
 
