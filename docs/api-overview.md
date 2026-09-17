@@ -50,14 +50,14 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
 | 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；`catalog.entity.edit` 决定能否协作维护他人/公开条目与直接发布，无此码者只能存 `draft` / `pending_review` |
-| 关系写入 | `POST /api/catalog/relations`、`PUT|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
+| 关系写入 | `POST /api/catalog/relations`、`PUT\|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役） | `catalog.lifecycle.manage` |
 | 发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个 Release） | 开放 |
 | 标签聚合 | `GET /api/catalog/tags`（按已发布实体的 `attributes.tags` 统计频次） | 开放 |
 | 货架 | `GET /api/catalog/shelves`、`GET /api/catalog/shelves/feed` | 开放 |
 | 外部权威库 | `GET /api/catalog/external-databases` | 开放 |
-| 首页偏好 | `GET|PUT /api/catalog/me/home-preferences` | 需登录 |
-| 定义版本管理 | `GET|POST /api/admin/catalog-definitions`、`/{id}`、`/{id}/diff|impact|publish|rollback` | `catalog.definitions.manage` |
+| 首页偏好 | `GET\|PUT /api/catalog/me/home-preferences` | 需登录 |
+| 定义版本管理 | `GET\|POST /api/admin/catalog-definitions`、`/{id}`、`/{id}/diff\|impact\|publish\|rollback` | `catalog.definitions.manage` |
 | 货架规则管理 | `/api/admin/shelves`（含 `/{id}` 读写删） | `catalog.shelves.manage` |
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |

@@ -126,13 +126,13 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 
 | 端点 | 权限码 |
 |---|---|
-| `GET|POST /api/admin/users`、`PUT /api/admin/users/:id/role`、`PUT /api/admin/users/:id/password` | `auth.users.manage` |
+| `GET\|POST /api/admin/users`、`PUT /api/admin/users/:id/role`、`PUT /api/admin/users/:id/password` | `auth.users.manage` |
 | `PUT /api/admin/users/:id/groups` | `auth.users.manage` |
 | `PUT /api/admin/users/:id/ban`（封禁 / 解封，body `{ "banned": true \| false }`） | `auth.users.manage` |
-| `GET|POST /api/admin/groups`、`PUT|DELETE /api/admin/groups/:code` | `auth.groups.manage` |
+| `GET\|POST /api/admin/groups`、`PUT\|DELETE /api/admin/groups/:code` | `auth.groups.manage` |
 | `GET /api/admin/permissions`（权限码清单） | `auth.groups.manage` |
-| `GET|PUT /api/admin/settings`（实例设置） | `auth.settings.manage` |
-| `GET|POST /api/admin/invites`、`POST /api/admin/invites/:code/revoke` | `auth.invites.manage` |
+| `GET\|PUT /api/admin/settings`（实例设置） | `auth.settings.manage` |
+| `GET\|POST /api/admin/invites`、`POST /api/admin/invites/:code/revoke` | `auth.invites.manage` |
 | `/api/admin/oauth/*`（客户端治理、吊销令牌、审计） | `auth.oauth.manage` |
 
 管理员创建账号用 `POST /api/admin/users`（`{ username, email, password }`，默认角色 `editor`）；
