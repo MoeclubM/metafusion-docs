@@ -31,6 +31,40 @@ MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、
 - **收藏**：登录后可以收藏条目；读收藏走 `GET /api/users/:id/favorites`（按请求方的实体可见性过滤）。`/api/favorites/*` 与 `/api/records/*` 按实例响应为准（当前部署返回 404 属正常，读收藏以 `/api/users/:id/favorites` 为准）。设置页里的「收藏公开」开关当前为只读展示。
 - **删除**：作者可以删除自己的主题与回复；持 `community.post.moderate` 的成员可以处置他人的主题、回复与短评。
 
+## 用户主页数据
+
+用户主页的数据由三个服务分别承载，一条主页会打到三条路径：
+
+| 端点 | 归属服务 | 认证 | 返回 |
+| --- | --- | --- | --- |
+| `GET /api/users/:id` | 账号服务 | 匿名 | `{user, stats}`：`user` 是 `id` / `username` / `role`（`banned` 仅封禁时下发、`email` 仅本人可见），`stats.invited_count` 是邀请成功的人数（详见 [认证与凭证](/api-auth)） |
+| `GET /api/users/:id/stats` | 互动服务 | 匿名 | `{"stats":{"topics_created","comments_created","favorites_count"}}` |
+| `GET /api/users/:id/contributions` | 目录服务 | 匿名 | 目录侧贡献流（`all` / `revisions` / `works` / `releases` / `artists` 五个 tab），详见 [实体查询与详情](/api-entities) |
+
+互动统计的三个数字**与对应的列表接口同源**，不是第二套口径：
+
+- `topics_created`：本人发起的论坛主题，**评论板块的实体短评不计入**（短评锚定条目、不是主题，主题列表同样把它排除在外）
+- `comments_created`：本人在 `community.posts` 里的楼中回复（前端标签「互动回复」）；主题正文不算回复（它不在 `posts` 里，已计入主题数），实体短评两边都不计——宁可少算，也不让同一行出现在两个数字里
+- `favorites_count`：本人收藏的行数，与 `GET /api/users/:id/favorites` 的 `total` **完全同口径**（互动服务没有「收藏公开」标记，设置页里的开关目前是前端只读占位；目标实体自身的可见性由读取方逐条过滤，不影响计数）
+
+边界：`:id` 不是 UUID 时返回 `404 not_found`；账号数据不归互动服务、它也不查账号库，因此**「不存在的用户」与「没有互动记录的用户」都返回 0**（收藏列表则是空页）。
+
+## 私信
+
+```http
+GET  /api/messages/with/{id}?page=1&page_size=20   # 会话，需登录
+POST /api/messages/with/{id}                        # 发信 {"body":"..."}，需登录
+```
+
+- **只能读写自己参与的会话**：会话由（当前用户, 对方）一对参与者决定，请求里没有「会话 id」这种能指向别人会话的输入，第三者的私信查出来就是空页
+- 读按 `created_at DESC, id DESC` 倒序：第一页是**最近**的 20 条，往后翻是更早的；`page` 缺省 1、`page_size` 缺省 20 上限 100，越界静默取默认（不报错）；`total` 是整段会话的条数，不随窗口变化
+- 读返回 `{"items":[{id,sender_id,recipient_id,body,created_at}],"total":N}`；发信返回 `{"message":{...}}`（`sender_id` 恒为当前用户，`created_at` 由数据库写入）。会话以「与某个用户」为入口，**没有**「我的会话列表」端点
+- **不能给自己发**：写接口 `400 invalid_recipient`（先判收件人、再判正文）
+- 正文裁剪两侧空白后必须非空且不超过 **4000 字符**（按字符数即 rune 计，不是字节——按字节算会把中文上限压到约 1/3），否则 `400 invalid_body`；入库的是裁剪后的文本
+- 非 UUID 的 `:id` 一律 `404 not_found`；未登录 `401 authentication_required`。读自己的会话不报错，恒为空会话
+- 对方 id 只当**外部引用**：互动服务不查账号库、也不校验对方是否存在（收件人注销后已发出的私信仍在）
+- `read_at` 列已预留、当前接口不读不写：响应里**没有**「已读」字段
+
 ## 运营操作（置顶与板块配置）
 
 这两件事面向运营，都需要账号服务下发的权限码（由权限组决定，普通成员与编辑都不持有）：
