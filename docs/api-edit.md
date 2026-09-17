@@ -244,7 +244,7 @@ GET /api/catalog/entities/:id/revisions
 
 | 端点 | 作用 |
 |---|---|
-| `GET /api/exchange/entities/:id` | 导出单个实体快照（JSON），供另一实例导入 |
+| `GET /api/exchange/entities/:id` | 导出单个实体快照（JSON），供另一实例导入；按调用者身份判可见性（匿名只看已发布），不存在或不可见都是 `404 not_found` |
 | `POST /api/exchange/proposals` | 提交外部编辑提案，请求体与实体写入相同；服务端强制落 `pending_review`，不能绕过审核直接发布 |
 
 ## 定义版本管理

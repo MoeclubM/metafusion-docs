@@ -99,7 +99,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 但含义已从"进程内模块开关"变为**部署态**：`enabled` 取决于是否配置了对应上游地址，
 `healthy` 来自后台每 30 秒一次的 `/health` 探测缓存（请求路径只读缓存，不被上游拖慢）。
 
-`PUT /api/admin/modules/:id` 恒定返回 `409 module_toggle_retired`：能力由部署决定（服务在不在）。
+`PUT /api/admin/modules/:id` 需要管理员（与生命周期同一档 `catalog.lifecycle.manage`）：未登录 `401 authentication_required`、无权限 `403 forbidden`；有权限时恒定返回 `409 module_toggle_retired`——能力由部署决定（服务在不在），没有可切开的开关。
 
 | 能力 | 由谁提供 | 说明 |
 | --- | --- | --- |
