@@ -7,7 +7,7 @@ group: "community"
 
 # 社区使用指南
 
-MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、主题、回复与条目短评的读接口匿名可用；发帖、回复、短评与收藏需要登录，其中**发帖类写操作还要求 `community.post.create` 权限码**，置顶与板块配置则需要各自的运营权限码。
+MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、主题、回复与条目短评的读接口匿名可用；发帖、回复、短评与收藏需要登录，其中**发帖类写操作还要求 `community.post.create` 权限码**，置顶、板块配置与帖子巡检则需要各自的运营权限码。
 
 ## 社区板块
 
@@ -65,19 +65,32 @@ POST /api/messages/with/{id}                        # 发信 {"body":"..."}，�
 - 对方 id 只当**外部引用**：互动服务不查账号库、也不校验对方是否存在（收件人注销后已发出的私信仍在）
 - `read_at` 列已预留、当前接口不读不写：响应里**没有**「已读」字段
 
-## 运营操作（置顶与板块配置）
+## 运营操作（置顶、板块配置与帖子巡检）
 
-这两件事面向运营，都需要账号服务下发的权限码（由权限组决定，普通成员与编辑都不持有）：
+这些接口面向运营，都需要账号服务下发的权限码（由权限组决定，普通成员与编辑都不持有）：
 
 | 操作 | 接口 | 所需权限码 | 可改内容 |
 | --- | --- | --- | --- |
 | 置顶 / 取消置顶 | `PUT /api/community/topics/{id}/pin` | `community.topic.pin` | 请求体 `{"pinned": true\|false}`；写主题的 `is_pinned` 列，主题列表里置顶项排在前面 |
 | 板块配置 | `PUT /api/community/boards/{code}` | `community.board.manage` | `name`、`description`（都是**单一字符串**）、`color`、`icon`、`sort_order`、`is_enabled`、`show_in_feed` |
+| 帖子巡检（只读） | `GET /api/community/posts` | `community.post.moderate` | 跨主题列**楼中回复**，`q` / `page` / `page_size`，不修改任何数据（详见下节） |
 
-- 两个接口都是**只改传入字段**：单独切 `show_in_feed` 或 `is_enabled` 时不必回传整份配置，也就不会因为漏带字段而把配置清空。
+- 置顶与板块配置这两个**写**接口都是**只改传入字段**：单独切 `show_in_feed` 或 `is_enabled` 时不必回传整份配置，也就不会因为漏带字段而把配置清空。
 - 板块 `code` 不可改（它是主题的板块归属键，改码要么让存量主题悬空、要么得级联改主题归属）；服务也不提供新增与删除板块：板块由种子播种、运营配置，删掉会让存量主题失去归属。
 - 板块名称按单语种字符串校验：`name` 须为非空字符串（空值或空白返回 `400 invalid_payload`），`description` 可为空串；目录服务的定义 / 货架 / 外部库（`/api/admin/catalog-definitions`、`/api/admin/shelves`、`/api/admin/external-databases`）仍要求四语种（`four_locale_names_required`）。区块颜色与图标不接受空值。
 - 权限与状态码：缺权限码 `403 forbidden`，未登录 `401 authentication_required`，主题或板块不存在 `404 not_found`，请求体不合法（如置顶缺 `pinned`、板块空载荷）`400 invalid_payload`。
+
+### 帖子治理列表（只读）
+
+`GET /api/community/posts` 是跨主题的回复巡检入口（社区管理台的「帖子治理」就用它）。此前要处置一条回复得先进主题详情，
+而主题详情会顺手把 `view_count` +1——拿它当巡检入口，等于每次排查都在篡改统计；本端点只读，**不触碰 `view_count`**。
+
+- 闸门 `community.post.moderate`（与删除他人主题 / 回复 / 短评同一码）：未登录 `401 authentication_required`，缺码 `403 forbidden`
+- 查询参数：`q` 去空白后按 `ILIKE` 子串匹配**主题标题或回复正文**（与主题列表的搜索同口径；`%` / `_` 按通配符处理，中文可直接搜）；`page` 从 1 起、`page_size` 缺省 20 上限 100，越界静默取默认，不报 400
+- 响应 `{"items":[…],"total":N}`（与 `/api/messages/*`、`/api/users/:id/favorites` 同一形状），按 `created_at DESC, id DESC` 排（最新在前）；`total` 是同谓词下的真实条数，不随窗口变化
+- 每一项含：`id`、`topic_id` / `topic_title` / `board_code`（治理上下文，不必再回查主题）、`author_id` / `author_name`（写入时的快照，空快照回落 `Anonymous`）、`post_number`、`reply_to_post_number`（未引用任何楼层时为 `null`）、`excerpt` 与 `truncated`（摘要折叠换行后按 **rune** 截到 200 字并标出是否截断，全文仍在主题页）、`created_at` / `updated_at`
+- **与信息流的分工**：`GET /api/community/feed` 读的是**评论板块的短评**（存在 `community.topics` 里的行，带条目标题），本端点读的是**楼中回复**（`community.posts`）——两张表，不能互相替代
+- 只读：不写数据、不改统计；处置仍走删除端点（作者本人，或持 `community.post.moderate` 的成员）；服务本身不额外限流，与其它社区接口一样只受网关按 IP 的 `/api/` 限流约束
 
 ## 社区规范与审核
 
