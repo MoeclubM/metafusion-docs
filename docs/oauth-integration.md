@@ -81,6 +81,7 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 - **未登录**：`302` 到账号页并带 `return_to=<本次授权请求的原始地址>`，登录后回到同一次授权请求，
   `state`、PKCE 参数与 `scope` 都不会丢。第三方不需要自己处理这一步。
 - **非 trusted 客户端会先渲染同意页**，展示客户端名称与 `client_id`、回跳地址，以及按收敛结果逐项列出的权限说明；
+  **未核验**（`verified=false`）的第三方应用还会多一行「该应用未通过核验」的提示（核验由管理员在管理面做）。
   用户点「同意并继续」才继续，点「拒绝」直接回跳。
 - **trusted 客户端**（预置第一方）跳过同意页，直接发码。
 - **同意**：`302` 到 `redirect_uri?code=<code>&state=<state>`（`redirect_uri` 自带 query 时用 `&` 续接，两个值都做 URL 转义）。
@@ -377,6 +378,11 @@ with urllib.request.urlopen(userinfo_request) as response:
 - 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、
   `client_secret_rotated`、`client_deleted`、`tokens_revoked`。
 - 另有 `GET /api/oauth/clients`：登录后可见的客户端基本信息列表（不含密钥哈希），供普通用户与前端读取。
+- **开发者面只服务归属自己的应用**：`/api/developer/apps*` 的列表与读 / 改 / 轮换 / 删一律按归属判定，
+  管理员在开发者面也**没有**例外——不属于自己的 `client_id` 返回 `404 client_not_found`（不是 `403`，
+  `403` 会泄漏「这个 id 已被占用」）；全部客户端的治理就是上面这张表。
+- **系统应用（平台自有、归属为空）只在这里维护**：开发者面的「我的应用」不列它们、自助接口也不返回；
+  第三方应用的**核验**同样只在管理面做（`PUT /api/admin/oauth/clients/{id}` 传 `verified`），未核验的应用在同意页会多一条提示。
 
 ### 9.2 用户自助撤回授权（与上面两条吊销的区别）
 
@@ -408,7 +414,8 @@ DELETE /api/auth/oauth-grants/{client_id}
 > **自助登记入口**：网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`，接口
 > `GET /api/developer/overview`、`GET|POST /api/developer/apps`、`PUT|DELETE /api/developer/apps/{id}`、
 > `POST /api/developer/apps/{id}/rotate-secret`）自助登记并管理自己的应用——按**应用归属**授权，任何登录账号可用，
-> 每个账号最多 20 个应用（超限 `app_quota_exceeded`）。
+> 每个账号最多 20 个应用（超限 `app_quota_exceeded`）。开发者面只认归属：看不到、也读不到不属于自己的应用
+> （返回 `404 client_not_found`，管理员没有例外），系统应用不在开发者面出现。
 > 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
 
 账号管理台（`/admin/account/`，由 `metafusion-auth` 的 `admin/` 独立构建）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。主站的 `/admin` 只管理元数据目录，OAuth 客户端治理不在那里（见 [平台概览](/overview) 的「管理台按域拆分」）。

@@ -163,7 +163,7 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 任何登录用户都可以登记自己的应用，无需管理员：
 
 ```http
-GET    /api/developer/overview              # issuer、端点、scope 说明与自有平台清单
+GET    /api/developer/overview              # 接入配置：issuer、端点与 scope 说明
 GET    /api/developer/apps                  # 我的应用
 POST   /api/developer/apps                  # 新建；明文 client_secret 只在这一次响应里出现
 GET    /api/developer/apps/:id
@@ -176,9 +176,18 @@ DELETE /api/developer/apps/:id
 而开发者中心按归属授权）。密钥在库里只存哈希，之后无处可取，只能轮换。
 自助登记有配额：每个账号最多 20 个应用，超限返回 `app_quota_exceeded`。
 
+- **开发者中心只服务归属自己的应用**：列表与读 / 改 / 轮换 / 删一律按归属判定（归属 = 当前账号），
+  **管理员也没有例外**——不属于自己的 `client_id` 返回 `404` + `{"error":"client_not_found"}`，而不是
+  `403`（`403` 会泄漏「这个 id 已被占用」）。配额同样一视同仁；要批量登记或治理别人的客户端走管理面。
+- **系统应用（平台自有、归属为空）只在管理台维护**：开发者面看不到、自助接口也不返回——
+  `GET /api/developer/apps` 的「我的应用」只列归属当前账号的应用（归属为空的行永不匹配）。
+- **核验（`verified`）是管理面的动作**：第三方应用自助登记后默认未核验，由管理员在
+  `PUT /api/admin/oauth/clients/{id}` 里置 `verified`；未核验的应用在同意页上会多一条「未核验」提示。
+  开发者面只读这个状态，不能自证。
+
 ::: tip 自助登记入口
 网关已把 `/api/developer/*` 分流到账号服务（主仓库 `deploy/nginx.conf`）。登录后在站内导航「开发者中心」（`/developer`）
-即可自助登记应用、查看接入配置与自有平台清单；管理台的 `/api/admin/oauth/clients`（需 `auth.oauth.manage`）
+即可自助登记应用、查看接入配置（issuer、端点与 scope 说明）；管理面的 `/api/admin/oauth/clients`（需 `auth.oauth.manage`）
 用于平台侧治理所有客户端——两边写的是同一张表、走同一份校验，差别只在授权判定（归属 vs 权限码）。
 :::
 
