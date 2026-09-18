@@ -10,7 +10,8 @@ group: "meta"
 ## 站务
 
 - **GitHub**：[MoeclubM/MetaFusion](https://github.com/MoeclubM/MetaFusion)（提 Issue / PR 最快）
-- **社区板块**：在 `/community` 发布话题（平台当前不提供站内私信）——`bug_report`（反馈与建议）用于问题与合规报告、`qa`（求助答疑）用于使用与编目问题、`casual`（闲聊杂谈）用于其它交流
+- **社区板块**：在 `/community` 发布话题——`bug_report`（反馈与建议）用于问题与合规报告、`qa`（求助答疑）用于使用与编目问题、`casual`（闲聊杂谈）用于其它交流
+- **站内私信**：可以给某个用户发私信（入口在该用户主页，收件箱在 `/messages`），但平台**没有拉黑 / 举报**——接到骚扰只能忽略，或走 `bug_report` 反馈
 - **公告板块**：`announcement` 用于站务通知与运营公告；编目与合规问题请走 `bug_report`，不要把日常讨论发在这里
 
 ## 报告问题

@@ -52,18 +52,24 @@ MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、
 ## 私信
 
 ```http
-GET  /api/messages/with/{id}?page=1&page_size=20   # 会话，需登录
-POST /api/messages/with/{id}                        # 发信 {"body":"..."}，需登录
+GET  /api/messages/conversations?page=1&page_size=20  # 收件箱会话列表，需登录
+GET  /api/messages/unread                             # 我的未读总数，需登录
+GET  /api/messages/with/{id}?page=1&page_size=20      # 与某人的会话，需登录
+POST /api/messages/with/{id}                          # 发信 {"body":"..."}，需登录
+PUT  /api/messages/with/{id}/read                     # 标记该会话的未读为已读，需登录
 ```
 
-- **只能读写自己参与的会话**：会话由（当前用户, 对方）一对参与者决定，请求里没有「会话 id」这种能指向别人会话的输入，第三者的私信查出来就是空页
+- **只能读写自己参与的会话**：会话由（当前用户, 对方）一对参与者决定，请求里没有「会话 id」这种能指向别人会话的输入；收件箱列表按「我的那一侧」（我收到的 + 我发出的）分组，别人的会话同样进不来。标记已读的更新恒带「收件人 = 我」，第三者调用影响 0 行
 - 读按 `created_at DESC, id DESC` 倒序：第一页是**最近**的 20 条，往后翻是更早的；`page` 缺省 1、`page_size` 缺省 20 上限 100，越界静默取默认（不报错）；`total` 是整段会话的条数，不随窗口变化
-- 读返回 `{"items":[{id,sender_id,recipient_id,body,created_at}],"total":N}`；发信返回 `{"message":{...}}`（`sender_id` 恒为当前用户，`created_at` 由数据库写入）。会话以「与某个用户」为入口，**没有**「我的会话列表」端点
+- 读返回 `{"items":[{id,sender_id,recipient_id,body,created_at}],"total":N}`；发信返回 `{"message":{...}}`（`sender_id` 恒为当前用户，`created_at` 由数据库写入）
+- **收件箱**：`GET /api/messages/conversations` 返回 `{"items":[{peer_id,last_message:{...},unread_count}],"total":N}`，按每段会话最近一条的时间倒序（与单会话同一套分页参数），`total` 是「我参与了多少段会话」——**页码越界时该页为空但 `total` 仍正确**。列表**不含对方用户名**：账号资料归账号服务，互动服务不查它的库，读者按 `peer_id` 自己去 `GET /api/users/{id}` 取
+- **未读**：`GET /api/messages/unread` 返回 `{"unread_count":N}`；口径是「`recipient_id = 我 AND read_at IS NULL`」，与收件箱每行的 `unread_count` 完全一致，自己发出的消息从不计入
+- **标记已读**：`PUT /api/messages/with/{id}/read` 返回 `{"marked":N}`（本次影响多少条）；**只有收信人能标**（发送方与第三者都是 0 行），重复调用第二次为 0 且不刷新已读时间。读会话（GET）**不会**顺手标记已读：已读是用户的明确动作，读接口带写副作用会让缓存与审计都说不清。发送方看不到「对方读没读」，响应里没有回执字段
 - **不能给自己发**：写接口 `400 invalid_recipient`（先判收件人、再判正文）
 - 正文裁剪两侧空白后必须非空且不超过 **4000 字符**（按字符数即 rune 计，不是字节——按字节算会把中文上限压到约 1/3），否则 `400 invalid_body`；入库的是裁剪后的文本
+- **发送频率**：同一账号连发有上限（约每分钟 20 条，令牌桶），超限返回 `429 rate_limited` 并带 `Retry-After`（秒）。限的是「发多快」，**不**限「发给谁」——平台当前没有拉黑/举报，收件人侧无法阻断投递，请自行忽略或向运营反馈
 - 非 UUID 的 `:id` 一律 `404 not_found`；未登录 `401 authentication_required`。读自己的会话不报错，恒为空会话
 - 对方 id 只当**外部引用**：互动服务不查账号库、也不校验对方是否存在（收件人注销后已发出的私信仍在）
-- `read_at` 列已预留、当前接口不读不写：响应里**没有**「已读」字段
 
 ## 运营操作（置顶、板块配置与帖子巡检）
 
