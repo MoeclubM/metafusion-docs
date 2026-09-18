@@ -73,7 +73,6 @@ GET  /api/auth/me                # 需认证：当前账号
 POST /api/auth/logout            # 注销当前会话
 POST /api/auth/logout-all        # 吊销该用户的全部会话
 PUT  /api/auth/password          # 改密码：{ old_password, new_password }
-POST /api/auth/change-password   # 同上（同一实现）
 ```
 
 **没有 `refresh_token` 字段**：续期走 `POST /api/auth/refresh`。服务端会话是 `auth.sessions` 里的行（24 小时），

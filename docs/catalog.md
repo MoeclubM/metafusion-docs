@@ -89,7 +89,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 首页偏好：登录用户可读写 `GET /api/catalog/me/home-preferences`（匿名返回 401）与 `PUT /api/catalog/me/home-preferences`，请求体 `{order, hidden, sections}`。`order` / `hidden` 只是这个用户看到的顺序与显隐，里面的未知 slug **原样保留、合并时忽略**（不再报 `unknown_shelf`：管理员删掉货架后，用户不该连保存都失败）。`sections` 是「覆盖系统货架 + 自建分区」的混合列表，最多 20 条：`slug` 命中系统货架就覆盖那一条给本人看的 `names` / `query` / `sort` / `icon`（系统默认对其他用户不变），不命中就是新增一个只属于本人的分区；每条至少要有非空的 `zh-CN` 名称（其余语种缺省时前端按回退链显示），并过与货架同一份规则校验（`slug` 形如 `^[a-z0-9][a-z0-9_-]{1,63}$`、`sort` 取 `updated` / `created` / `title`，空值等价 `updated`），违反分别报 `invalid_slug` / `invalid_name` / `invalid_sort`，超过 20 条报 `too_many_sections`；同 slug 只保留首次声明。`GET /api/catalog/shelves/feed` 按这份偏好合并求值，每条 `shelf` 带 `source`：`system`（系统货架，含被本人覆盖的那一份）与 `custom`（自建分区）；匿名与未设置偏好的用户只看到 `system`。
 
-用户角色：`PUT /api/admin/users/:id/role` 请求体为 `{role}`，取值为 `user / editor / admin`（创建账号默认 `editor`，密码长度 12–72），且不能降级唯一的管理员。改密 `PUT /api/auth/password` 与 `POST /api/auth/change-password` 同语义，请求体均为 `{old_password, new_password}`。
+用户角色：`PUT /api/admin/users/:id/role` 请求体为 `{role}`，取值为 `user / editor / admin`（创建账号默认 `editor`，密码长度 12–72），且不能降级唯一的管理员。改密 `PUT /api/auth/password`，请求体 `{old_password, new_password}`。
 
 来源支持 `url`（必须 HTTP(S) URL）、`publication` 和 `self`，都需要具体 `citation`。每次写入均要求 `edit_note` 和非空 `sources`，不再使用 v1 的 `source_urls` 字段。
 
