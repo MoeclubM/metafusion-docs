@@ -24,6 +24,15 @@
 - **API**：认证、概览与主干、检索、编辑与关系、存储上传、Agent 接入
 - **条款**：服务条款、隐私、版权、联系方式、更新日志
 
+## 本地与生产
+
+| 命令 | 用途 |
+| --- | --- |
+| `npm run dev` | 本地写作预览（VitePress dev server） |
+| `npm run build` | 产出静态站到 `docs/.vitepress/dist` |
+| `npm run preview` | 本地预览构建产物（按 `base=/docs/` 挂载） |
+| `npm run start` | **生产**静态服务器：站点根为 `site/`，由镜像把构建产物放进 `site/docs`，让网关 `location /docs`（原样转发不改写路径）与文件一一对应 |
+
 ## 参与
 
 发现表述错误、字段与接口不一致、或缺少章节，直接开 issue 或提 PR；文档以**实例的实际响应**为准，
