@@ -67,7 +67,7 @@ PUT  /api/messages/with/{id}/read                     # 标记该会话的未读
 - **标记已读**：`PUT /api/messages/with/{id}/read` 返回 `{"marked":N}`（本次影响多少条）；**只有收信人能标**（发送方与第三者都是 0 行），重复调用第二次为 0 且不刷新已读时间。读会话（GET）**不会**顺手标记已读：已读是用户的明确动作，读接口带写副作用会让缓存与审计都说不清。发送方看不到「对方读没读」，响应里没有回执字段
 - **不能给自己发**：写接口 `400 invalid_recipient`（先判收件人、再判正文）
 - 正文裁剪两侧空白后必须非空且不超过 **4000 字符**（按字符数即 rune 计，不是字节——按字节算会把中文上限压到约 1/3），否则 `400 invalid_body`；入库的是裁剪后的文本
-- **发送频率**：同一账号连发有上限（约每分钟 20 条，令牌桶），超限返回 `429 rate_limited` 并带 `Retry-After`（秒）。限的是「发多快」，**不**限「发给谁」——平台当前没有拉黑/举报，收件人侧无法阻断投递，请自行忽略或向运营反馈
+- **发送频率**：同一账号连发有上限（约每分钟 20 条，令牌桶），超限返回 `429 rate_limited` 并带 `Retry-After`（秒）。限的是「发多快」，**不**限「发给谁」——平台当前没有拉黑，收件人侧无法阻断投递；收到骚扰可在对方主页用**站内举报**（对象类型「用户」，理由选骚扰，见下面的「举报与申诉」）提交，举报只有处理人可见
 - 非 UUID 的 `:id` 一律 `404 not_found`；未登录 `401 authentication_required`。读自己的会话不报错，恒为空会话
 - 对方 id 只当**外部引用**：互动服务不查账号库、也不校验对方是否存在（收件人注销后已发出的私信仍在）
 
@@ -98,10 +98,61 @@ PUT  /api/messages/with/{id}/read                     # 标记该会话的未读
 - **与信息流的分工**：`GET /api/community/feed` 读的是**评论板块的短评**（存在 `community.topics` 里的行，带条目标题），本端点读的是**楼中回复**（`community.posts`）——两张表，不能互相替代
 - 只读：不写数据、不改统计；处置仍走删除端点（作者本人，或持 `community.post.moderate` 的成员）；服务本身不额外限流，与其它社区接口一样只受网关按 IP 的 `/api/` 限流约束
 
+## 举报与申诉
+
+站点提供**站内举报**：任何登录用户都能举报违规内容或用户，入口在实体详情、短评、帖子（主题与回复）与用户主页；
+处理在社区管理台（`/admin/community` → 「举报与申诉」）。举报不必公开发帖，权利人也不必把权属证明发到公开板块。
+
+### 提交举报（登录即可，不需要权限码）
+
+| 接口 | 说明 |
+| --- | --- |
+| `POST /api/community/reports` | 请求体 `{"target_type","target_id","reason","detail?","evidence_url?"}` |
+| `GET /api/community/reports/mine` | 我的举报（`page`/`page_size`，形状 `{"items":[…],"total":N}`），带状态、处理人、处置结论与申诉结论 |
+| `POST /api/community/reports/:id/appeal` | 被处置方提交**一次**申诉（请求体 `{"body":"…"}`） |
+
+- **对象类型** `target_type`：`entity`（实体）、`comment`（短评）、`post`（论坛主题或楼中回复，按 id 自动分派）、`user`（用户）、`resource`（资源）。
+  短评与帖子是互动服务本地的内容，提交时会校验它确实存在（不存在 `404 not_found`）；实体 / 用户 / 资源只存**不透明引用**，不跨服务校验存在性（本地查不到不等于不存在）。
+- **理由** `reason`（八种，界面按四语展示）：`illegal` / `copyright` / `privacy` / `abuse` / `harassment` / `spam` / `misinformation` / `other`；非法值 `400 invalid_reason`。
+- **说明与证据**：`detail` 上限 2000 字符；`evidence_url` 只接受 http/https 绝对地址（上限 500 字符），否则 `400 invalid_evidence_url`。
+- **反滥用**：同一举报人对同一对象的**未终结**举报只能有一条——重复提交回 `409 duplicate_report`（被驳回或被处置之后可以再举报一次）；
+  同一人滚动 24 小时内最多 20 条，超出回 `429 rate_limited` 并带 `Retry-After`（与站点其它限流同一个码与响应头）。
+- **隐私**：举报说明与证据链接**只有处理人可见**，不会像发帖那样公开。
+- 提交成功返回 `{"ok":true,"item":{…}}`（`status` 为 `pending`）；每次提交都写审计（动作码 `report.created`），**举报说明与正文不进审计**。
+
+### 状态与处置（管理台）
+
+状态机：`pending`（待处理）→ `accepted`（已受理）→ `resolved`（已处置）；`pending` → `rejected`（已驳回）。
+`rejected` 与 `resolved` 是终态，再次处置回 `409 invalid_report_state`。
+
+| 操作 | 接口 | 说明 |
+| --- | --- | --- |
+| 队列 | `GET /api/community/admin/reports` | `status`（逗号分隔多选）/ `target_type` / `q`（举报号、目标 id、举报人、处理人、说明）+ `page`/`page_size` |
+| 详情 | `GET /api/community/admin/reports/:id` | 报告 + 时间线 `events` + 该举报下的 `appeals` + `target_present`（本地内容此刻是否还在） |
+| 受理 | `POST /api/community/admin/reports/:id/accept` | `{"note"?}` |
+| 驳回 | `POST /api/community/admin/reports/:id/reject` | `{"note"}` **必填**（驳回要交代理由） |
+| 处置 | `POST /api/community/admin/reports/:id/resolve` | `{"enforcement","note"}`，`enforcement` ∈ `none` / `content_removed` / `user_banned` |
+| 申诉队列 | `GET /api/community/admin/appeals` | 默认只看待处理，`status` 可显式取别档 |
+| 处理申诉 | `POST /api/community/admin/appeals/:id/review` | `{"status":"accepted"\|"rejected","note"}`，说明必填 |
+
+- **闸门**：以上管理端接口都需要 `community.report.review`（`community_admin` 与 `community_moderator` 组默认持有）；未登录 `401 authentication_required`、缺码 `403 forbidden`。
+- **下线内容不新造动作**：`enforcement=content_removed` 时服务端**复核**目标内容确实已经不在了——下线本身走既有删除端点（`DELETE /api/community/posts/{id}`、`DELETE /api/community/topics/{id}`、`DELETE /api/community/topics/{id}/posts/{postId}`），内容还在回 `409 content_still_present`。管理台的「处置」会先调这些既有入口再记录结论。
+- **封禁用户也不新造**：`enforcement=user_banned` 只登记处置结论，真正的封禁在账号控制台（既有 `PUT /api/admin/users/:id/ban`，需要 `auth.users.manage`）执行；实体 / 资源类目标不能记 `content_removed`（`400 enforcement_not_supported`）。
+- **审计**：受理 / 驳回 / 处置 / 申诉提交 / 申诉处理各有动作码（`report.accepted`、`report.rejected`、`report.resolved`、`report_appeal.created`、`report_appeal.reviewed`）。
+
+### 申诉（被处置方一次）
+
+被处置方（短评 / 帖子的作者，或被举报的用户本人）对处置结论有异议时，可以在「我的举报」里提交**一次**申诉：
+
+- 只有报告已经**受理或处置**（`accepted` / `resolved`）才能申诉，否则 `409 report_not_disposed`；
+- 只有被处置方本人能提交（其他人 `403 not_appealed_party`；实体 / 资源类目标在本地解析不出被处置方，`403 appeal_not_available`）；
+- 每条处置最多一条申诉，重复提交 `409 duplicate_appeal`；
+- 申诉进管理台「申诉队列」，处理结论是**采用**或**驳回**（各需一句说明）。采用申诉**只记录结论**：不会自动恢复已下线的内容，也不会改写原举报的状态。
+
 ## 社区规范与审核
 
-- **内容合规**：严禁发布侵权盗版链接、商业广告、恶意灌水与人身攻击内容，违规内容会被清理。当前处置手段为删除主题/回复/短评与锁定主题（`is_locked` 后不能回帖）；举报与判断由站务跟进。
-- **处置边界**：删除他人内容需要 `community.post.moderate` 权限码；账号层面的禁言与封禁不在当前实现内，问题账号由站务按站点规则处理。
+- **内容合规**：严禁发布侵权盗版链接、商业广告、恶意灌水与人身攻击内容，违规内容会被清理。处置手段为删除主题/回复/短评与锁定主题（`is_locked` 后不能回帖）；**违规举报走站内举报入口**（见上面的「举报与申诉」），由持 `community.report.review` 的处理人受理与处置，每一步都留审计。
+- **处置边界**：删除他人内容需要 `community.post.moderate` 权限码；账号层面的禁言与封禁**不在互动服务实现**——举报队列只登记"用户已封禁"这一处置结论，真正的封禁在账号控制台执行（`auth.users.manage`）。
 - **频率**：社区服务本身不限制发帖频率，写接口与其他 `/api/` 请求一样受网关按 IP 的速率限制约束，超限由网关返回 `429`（这一层不带 `Retry-After` 头）。
 
 ## 快速入口

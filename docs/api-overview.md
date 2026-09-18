@@ -96,6 +96,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 用户主页 | `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` | 开放（`email` 字段仅本人可见；资料 / 统计 / 贡献分别见 [认证与凭证](/api-auth)、[社区使用指南](/community-guide)、[实体查询与详情](/api-entities)） |
 | 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`、帖子巡检 `community.post.moderate`（`member` 组默认持有发帖码） |
 | 私信 | `/api/messages/with/:id`（GET 读会话、POST 发信）、`/api/messages/with/:id/read`（PUT 标记已读）、`/api/messages/conversations`（收件箱会话列表）、`/api/messages/unread`（未读总数） | 需登录（口径与限频见 [社区使用指南](/community-guide)） |
+| 举报与申诉 | 提交 `POST /api/community/reports`、我的举报 `GET /api/community/reports/mine`、申诉 `POST /api/community/reports/:id/appeal`；管理端队列 `GET /api/community/admin/reports`（含 `/:id` 详情与 accept / reject / resolve）、申诉队列 `GET /api/community/admin/appeals`（含 `/:id/review`） | 提交与申诉需登录（无权限码）；管理端需 `community.report.review`（口径与状态机见 [社区使用指南](/community-guide) 的「举报与申诉」） |
 | 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
 
 ## 访问模型
