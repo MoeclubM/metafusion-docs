@@ -85,6 +85,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 货架 | `GET /api/catalog/shelves`、`GET /api/catalog/shelves/feed` | 开放 |
 | 外部权威库 | `GET /api/catalog/external-databases` | 开放 |
 | 首页偏好 | `GET\|PUT /api/catalog/me/home-preferences` | 需登录 |
+| 站内通知 | 收件箱 `GET /api/notifications`（`items` / `total` / `unread`）、未读数 `GET /api/notifications/unread-count`、标记已读 `POST /api/notifications/:id/read` 与 `POST /api/notifications/read-all` | 需登录；**只对自己可见**（没有 recipient 参数，收件人就是令牌身份：对别人的通知标记已读与对不存在的 id 一样回 `404 not_found`）。事件类型 `comment.replied` / `entity.included` / `entity.review_approved` / `entity.review_rejected` / `import.completed`；同一聚合键的多条事件合并成一行（`count` 记录合并条数），有新活动时该行重新变为未读 |
 | 定义版本管理 | `GET\|POST /api/admin/catalog-definitions`、`/{id}`、`/{id}/diff\|impact\|publish\|rollback` | `catalog.definitions.manage` |
 | 货架规则管理 | `/api/admin/shelves`（含 `/{id}` 读写删） | `catalog.shelves.manage` |
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
@@ -124,6 +125,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | `GET /api/users/:id/contributions` | 120 / 分钟 |
 | `GET /api/catalog/compare` | 10 / 分钟 |
 | `POST /api/importer/preview` | 10 / 分钟 |
+| `GET /api/notifications/unread-count` | 300 / 分钟（角标端点，比其它读接口宽：一个 NAT 后可能同时开着几十个标签页） |
 
 写接口（实体、关系、生命周期）没有路由级限流，但仍受网关按 IP 的 `30 r/s`（burst 50）约束；
 `GET /api/importer/sources` 只读注册表、不出站抓取，也不额外限流（与 `preview` 的 10 / 分钟无关）；

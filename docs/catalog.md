@@ -112,11 +112,11 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`（非 200 按不存在处理）；
 合并过的 id 用 `GET /api/catalog/entities/{id}/resolve` 取当前身份，不要假定 ID 永久有效。
 
-Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响；其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。其余导入器、AI、通知与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。
+Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响；其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。其余导入器、AI 与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。（站内通知已实现，端点在目录服务上，见 [统一 API 概览](/api-overview)。）
 
 ## 不做的事
 
 - **不做转码**：不生成 HLS 切片、预览音频、波形图或缩略图；资源上传与下载见 [资源上传与下载](/upload-download)。
-- **不做未接入能力的承诺**：通知、AI 增强、外部导入器扩展仍在规划中，接口文档里没写的端点就是还没有。
+- **不做未接入能力的承诺**：AI 增强与外部导入器扩展仍在规划中，接口文档里没写的端点就是还没有。
 
 自建实例的部署、迁移与验收步骤属于开发文档，不在本手册范围内；面向开发者的代码仓与协作文档见 [MetaFusion](https://github.com/MoeclubM/MetaFusion)。
