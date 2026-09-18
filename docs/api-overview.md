@@ -15,9 +15,15 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 
 - **Base URL**：`/api`（单一入口，网关按路径分流到目录、账号、互动、存储四个服务；未单列的前缀兜底给目录服务 `backend:8080`）
 - **OpenAPI 规范**：[GET /api/openapi.json](/api/openapi.json)（OpenAPI 3.0.3）。它只覆盖**目录服务**的 paths 与 schemas；
-  账号、互动、存储各自实现自己的前缀，目前没有机器可读的 OpenAPI
-- **交互式文档**：[Scalar (/api/docs)](/api/docs)、[Swagger UI (/api/swagger)](/api/swagger)
-- **认证**：会话 Cookie `mf_session`，或 `Authorization: Bearer <token>`。令牌由账号服务签发（RS256），目录服务只验签、不查库、不签发
+  账号、互动、存储各自实现自己的前缀，目前没有机器可读的 OpenAPI。这是**接入方该看的那一份**：
+  它**公开、无需登录**（与 `GET /api/version` 同列公开面）——把端点表藏起来只是隐蔽性、不是访问控制
+- **交互式文档**：[Scalar (/api/docs)](/api/docs)、[Swagger UI (/api/swagger)](/api/swagger)。
+  这两页是**管理面**：它们在本域里执行脚本，匿名可达等于把整份 API 面连同同源脚本执行面一起交出去，
+  因此**需要先登录、且账号要持 `catalog.lifecycle.manage`**（未登录 `401 authentication_required`，
+  登录但无码 `403 forbidden`）；页面与它自托管的脚本、样式（`/api/docs/assets/*`）走同一道闸门。
+  接入方要读契约请用上面的 `/api/openapi.json`，不要假设这两页对外可达
+- **认证**：会话 Cookie `mf_session`，或 `Authorization: Bearer <token>`。会话 / OAuth 令牌由账号服务签发（RS256），目录服务只验签、不查库、不签发；
+  另有**个人访问令牌（PAT，`mfp_` 前缀）**供外部应用 / Agent / CI 长期接入——目录侧把它交给账号服务内省判定，见 [认证与凭证](/api-auth)
 - **请求体**：JSON；未知字段一律拒绝（`400 invalid_payload`），体积上限 2 MiB
 - **响应**：统一 JSON；错误统一为 `{ "error": "<机器码>" }`
 - **限流**：目录服务只对少数重型读接口限流（见下，超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数）；
@@ -56,6 +62,9 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - 不带尾斜杠的裸路径由 `location =` 精确匹配 301 补齐（`/admin/account` → `/admin/account/`），否则会被最宽的 `location /` 兜给主前端、表现为 404
 - 它们是**页面路径、不是 `/api/` 路径**：网关只对 `/api/` 下的 location 挂 `limit_req`，因此这四个管理台（与 `/docs` 同类）**不套 `/api/` 的限流口径**——不是漏配，别按 `/api/` 的 30 r/s 去估算或补一条限流
 - 管理台自身的访问控制由应用鉴权 + 数据接口上的权限码共同决定（例如账号管理台调 `/api/admin/users` 仍要 `auth.users.manage`）
+- **实例设置在管理台里只能读**：账号管理台的「实例与设置」（`/admin/account/instance`，需 `auth.settings.manage`）
+  只渲染 `GET /api/admin/settings` 返回的键值，没有写入控件；`PUT /api/admin/settings` 存在且生效，但**没有界面入口**，
+  改注册开关 / 邀请策略 / 限流阈值这类设置需要直接调该端点（权限码相同）
 
 ## 能力分组
 
@@ -78,6 +87,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
 | 外部导入 | `GET /api/importer/sources`（只读来源清单）、`POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
+| 交互式文档 | `GET /api/docs`（Scalar）、`GET /api/swagger`（Swagger UI） | 需登录 + `catalog.lifecycle.manage`（管理面，不是公开入口） |
 | 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
 | 用户主页 | `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` | 开放（`email` 字段仅本人可见；资料 / 统计 / 贡献分别见 [认证与凭证](/api-auth)、[社区使用指南](/community-guide)、[实体查询与详情](/api-entities)） |
 | 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 读开放；写除登录外还要权限码：发帖与回帖 `community.post.create`、置顶 `community.topic.pin`、板块配置 `community.board.manage`、帖子巡检 `community.post.moderate`（`member` 组默认持有发帖码） |
@@ -139,11 +149,13 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 400 | `invalid_status` | 状态机不允许这个动作：下架只接受 `published`（`draft` / `pending_review` 没有可下架的内容，`deleted` / `merged` 是终态），生命周期端点对已 `deleted` / `merged` 的实体也回这个码 |
 | 400 | `compare_requires_two_to_six` | 对比的 `ids` 少于 2 个或多于 6 个（`/compare` 只接 Release，非 Release 报 `invalid_kind`） |
 | 401 | `authentication_required` | 需要登录的端点未带有效令牌 |
-| 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者） |
+| 401 | `invalid_token` | **带 `mfp_` 前缀的 PAT** 无效 / 已吊销 / 已过期 / 账号被封禁（不细分原因）；形态非法在本地直接拒绝。注意：PAT 坏令牌在**读端点**也返回 401，与会话 / OAuth 令牌的"验签失败按匿名继续"不同 |
+| 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者）。PAT 的有效权限 = 账号现时权限 ∩ 令牌 scopes，scopes 为空或不够时就是这里 |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分「不存在」与「无权限」）；用户主页三条路径上非 UUID 的 id 也归这里 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致：重读实体后再写 |
 | 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避（网关自身的 429 无该头，也不带此 JSON 体） |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） |
+| 503 | `auth_unavailable` | PAT 请求问不到账号服务：内省端点不可达 / 超时 / 服务没配 `AUTH_URL`。这是依赖故障，**重试**而不是换令牌 |
 
 ## 实体状态与可见性
 
