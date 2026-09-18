@@ -110,9 +110,10 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | `profile` | 读取基本资料 | 用户名与角色 | `username`、`role` |
 | `email` | 读取邮箱 | 账号邮箱地址 | `email` |
 
-::: warning userinfo 不按 scope 裁剪
-这三个 scope 只影响授权时展示的权限项与令牌里的 `scope` 字段，`userinfo` 的返回字段**不随 scope 变化**；
-「最小权限」只能靠第三方自己不多读、不多存（见「已知限制」）。
+::: tip userinfo 按 scope 裁剪
+`userinfo` 只回**令牌被授予 scope 覆盖**的字段：`openid` 给 `sub` / `id`，`profile` 追加
+`username` / `role`，`email` 追加 `email`。只申请 `openid` 就拿不到邮箱——同意页上说给什么，
+实际就只给什么（2026-09-19 审计 S-10 的修复）。
 :::
 
 ### 2.3 授权请求的错误（直接回 JSON，不跳回回调地址）
@@ -181,7 +182,16 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 curl -sS "https://<your-host>/api/oauth/userinfo" -H "Authorization: Bearer <access-token>"
 ```
 
+返回字段由令牌被授予的 scope 决定（`sub` / `id` 恒回）：
+
+| 令牌 scope | 追加字段 |
+|---|---|
+| `openid` | ——（只有 `sub` / `id`） |
+| `profile` | `username`、`role` |
+| `email` | `email` |
+
 ```json
+// scope=openid profile email 时的响应
 { "sub": "<user-uuid>", "id": "<user-uuid>", "username": "<username>", "role": "user", "email": "<email>" }
 ```
 
@@ -191,7 +201,8 @@ curl -sS "https://<your-host>/api/oauth/userinfo" -H "Authorization: Bearer <acc
 | 401 | `invalid_token` | 令牌过期、已被吊销、其客户端已停用，或根本不是本服务签发的令牌 |
 
 失效判定以**服务端的存活令牌记录**为准（不是只看 JWT 能否验签），所以「吊销 / 停用」在这里是即时生效的。
-当前实现也允许实例自身的登录会话令牌调用 `userinfo`（便于排障）；第三方仍应始终使用授权码换来的 `access_token`。
+当前实现也允许实例自身的登录会话令牌调用 `userinfo`（便于排障）：那种令牌不属于任何第三方授权，
+没有 scope 可依，按全字段返回；第三方仍应始终使用授权码换来的 `access_token`。
 
 ## 5. 回调地址白名单规则
 
@@ -441,8 +452,6 @@ DELETE /api/auth/oauth-grants/{client_id}
 
 - **没有 `refresh_token`**：访问令牌 15 分钟到期后只能重新走完整授权流程。想要更长的登录态，
   要么让本地会话短于 15 分钟并接受重新授权，要么由下游自己维护会话（授权只用于首次身份确认）。
-- **`userinfo` 不按 scope 裁剪声明**：不论令牌 scope 是什么，返回的都是 `sub` / `id` / `username` / `role` / `email` 五项；
-  第三方不能靠 scope 推断「拿到了哪些字段」，要做到最小权限只能自己少读、少存。
 - **同意不记忆**：同一用户对同一非 trusted 客户端的每次授权都会重新渲染同意页，没有「已授权免再次确认」。
 - **终端用户可自查与自助撤回**（`GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2）；
   仍**没有** introspection 式的"撤销所有下游令牌"能力，撤回只影响本服务持有的第三方令牌。
