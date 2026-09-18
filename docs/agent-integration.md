@@ -455,7 +455,7 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 | `401 authentication_required` / `403 forbidden` | 令牌无效，或缺权限码、不是该条目的可写者 | 重新登录；发布、合并与下架归生命周期权限 |
 | `404 not_found` | 不存在，或对调用者不可见 | 未发布条目只对创建者与持权限者可见 |
 | `409 version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
-| `429 rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避 |
+| `429 rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避；命中限流的路由每个响应都带 `X-RateLimit-Limit` / `Remaining` / `Reset`，可据此提前节流 |
 
 遇到表里没有的错误：先用最小载荷复现一次，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`；仍无法解释就停止写入，把「错误码 + 请求摘要 + 目标实体」作为实现缺口上报，不要用近似数据填充，也不要绕过接口改库。
 

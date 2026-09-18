@@ -27,7 +27,10 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 - **请求体**：JSON；未知字段一律拒绝（`400 invalid_payload`），体积上限 2 MiB
 - **响应**：统一 JSON；错误统一为 `{ "error": "<机器码>" }`
 - **限流**：目录服务只对少数重型读接口限流（见下，超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数）；
-  网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`**。全站的限流信号只有 `429` 与（目录侧路由限流带上的）`Retry-After`，响应头里不带 `X-RateLimit-*` 系列
+  这些路由的**每个响应**都带 `X-RateLimit-Limit`（窗口上限）、`X-RateLimit-Remaining`（窗口内剩余次数，用尽为 0）、
+  `X-RateLimit-Reset`（距窗口重置的秒数），超限的 `429` 同样带这三件套。
+  网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`、也不带这组头**；
+  账号 / 互动 / 存储三个服务自身的限流同样不发 `X-RateLimit-*`
 
 ### 网关分流
 
@@ -114,6 +117,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 路由 | 上限 |
 |---|---|
 | `GET /api/catalog/entities` | 120 / 分钟 |
+| `GET /api/catalog/entities/stats` | 120 / 分钟（另需 `catalog.lifecycle.manage`） |
 | `GET /api/catalog/tags` | 120 / 分钟 |
 | `POST /api/catalog/expressions/details` | 120 / 分钟 |
 | `GET /api/catalog/shelves/feed` | 60 / 分钟 |
@@ -124,8 +128,10 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 写接口（实体、关系、生命周期）没有路由级限流，但仍受网关按 IP 的 `30 r/s`（burst 50）约束；
 `GET /api/importer/sources` 只读注册表、不出站抓取，也不额外限流（与 `preview` 的 10 / 分钟无关）；
 `/api/auth/` 与 `/api/setup` 另按 `5 r/s` 限流；`/api/storage/` 同样受 `30 r/s` 约束，只是因为分片上传天然是多请求而把 burst 放大到 100。
-目录服务的路由级限流超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）；
-网关自身的限流由 nginx 直接返回 `429`（`limit_req_status 429`），响应体不是目录服务的错误 JSON。
+上表每一行的**所有响应**（含 200 与超限的 `429`）都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`：
+`Limit` 是该路由的分钟上限、`Remaining` 是当前窗口还剩几次、`Reset` 是距窗口重置的秒数（据此能算出下一次可用的时刻）；
+表外路由不发这组头。目录服务的路由级限流超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）；
+网关自身的限流由 nginx 直接返回 `429`（`limit_req_status 429`），响应体不是目录服务的错误 JSON，也没有这组头。
 
 ## 错误码
 
@@ -153,7 +159,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者）。PAT 的有效权限 = 账号现时权限 ∩ 令牌 scopes，scopes 为空或不够时就是这里 |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分「不存在」与「无权限」）；用户主页三条路径上非 UUID 的 id 也归这里 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致：重读实体后再写 |
-| 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避（网关自身的 429 无该头，也不带此 JSON 体） |
+| 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避；命中限流的路由每个响应都带 `X-RateLimit-Limit` / `Remaining` / `Reset`（网关自身的 429 无这些头，也不带此 JSON 体） |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） |
 | 503 | `auth_unavailable` | PAT 请求问不到账号服务：内省端点不可达 / 超时 / 服务没配 `AUTH_URL`。这是依赖故障，**重试**而不是换令牌 |
 

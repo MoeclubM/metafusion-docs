@@ -140,6 +140,8 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 - 吊销、到期与权限收回在目录侧**最长 60 秒后生效**（下游缓存 60 秒内省结果），不要按"立即失效"写重试逻辑；
 - 错误只有两个稳定机器码：无效 / 已吊销 / 已过期 / 账号被封禁 → `401 invalid_token`；账号服务不可达 → `503 auth_unavailable`（重试，不要换凭据）。
   形态非法的 `mfp_` 令牌在**读端点**也返回 401，与"会话令牌坏了按匿名继续"不同；
+- **PAT 不绕过限流**：目录侧的路由级限流按 IP + 路由、与凭据无关，命中限流的路由每个响应都带
+  `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`，长跑 Agent 应据此自己节流，超限仍是 `429 rate_limited` + `Retry-After`；
 - **没有 `X-API-Key` 认证方式**；scope 也不是 `catalog:write` 这类读写词表。完整口径（限额 10 张、`expires_in_days`、
   吊销窗口、安全建议）见 [认证与凭证](/api-auth)。
 
@@ -220,7 +222,7 @@ POST /api/catalog/entities/:id/unpublish
 
 - **Idempotency-Key**：只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认这个请求头。缓存键是「路由 + 用户 + key」，命中直接返回首创结果、不建重复数据；存活 24 小时，存在**进程内存**里，重启即失效，也不做载荷哈希——同一个 key 换了载荷不会报冲突，会照首发结果返回。并发同 key 不保证单飞，重试前先回读确认。
 - **更新与删除不用幂等键**，靠 `expected_version`：收到 `409 version_conflict` 就回读实体取最新 version 再重放，不要盲目重复创建。
-- **限流**：`GET /api/catalog/entities` 120/分钟、`GET /api/catalog/tags` 120/分钟、`POST /api/catalog/expressions/details` 120/分钟、`GET /api/catalog/shelves/feed` 60/分钟、`GET /api/users/:id/contributions` 120/分钟、`GET /api/catalog/compare` 10/分钟、`POST /api/importer/preview` 10/分钟（按 IP + 路由、进程内存固定窗口）。写入接口没有路由级限流，但仍受网关按 IP 的约束。超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
+- **限流**：`GET /api/catalog/entities` 120/分钟、`GET /api/catalog/tags` 120/分钟、`POST /api/catalog/expressions/details` 120/分钟、`GET /api/catalog/entities/stats` 120/分钟（另需 `catalog.lifecycle.manage`）、`GET /api/catalog/shelves/feed` 60/分钟、`GET /api/users/:id/contributions` 120/分钟、`GET /api/catalog/compare` 10/分钟、`POST /api/importer/preview` 10/分钟（按 IP + 路由、进程内存固定窗口）。写入接口没有路由级限流，但仍受网关按 IP 的约束。命中限流的路由**每个响应**都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数），超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
 
 ## 6. 错误码与自愈策略
 
@@ -252,7 +254,7 @@ POST /api/catalog/entities/:id/unpublish
 | 403 | `forbidden` | 已登录但缺对应权限码，或不是该条目的可写者 | 核对令牌 `permissions`；发布、合并归生命周期权限 |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分两者） | 用查重响应里的 id；未发布条目只对创建者与持权限者可见 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
-| 429 | `rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避后重试 |
+| 429 | `rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避后重试；命中限流的路由每个响应都带 `X-RateLimit-*`，可用 `Remaining` / `Reset` 提前节流 |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） | 停止写入，把错误码与请求摘要一起上报 |
 | 503 | `auth_unavailable` | PAT 请求问不到账号服务（内省不可达 / 未配置 `AUTH_URL`） | 这是依赖故障：**退避重试**，不要当成凭据问题去换令牌 |
 

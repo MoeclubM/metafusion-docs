@@ -268,7 +268,9 @@ DELETE /api/developer/apps/:id
 - PAT 的内省端点（`POST /api/auth/tokens/introspect`，下游服务调用）另有自己的双维度固定窗口限流：
   每来源 IP 600 次/分钟、每令牌 60 次/分钟，超限 `429 rate_limited` 带 `Retry-After`。它**不读**实例设置里的
   认证写入限流开关——内省是读语义，为了压注册洪水关掉写入限流不该连带松开下游鉴权
-- 超限返回 `429` 与 `Retry-After`；限流按 IP 与路由判定，响应头不带 `X-RateLimit-*` 系列
+- 超限返回 `429` 与 `Retry-After`；限流按 IP 与路由判定。**只有目录服务的路由级限流**会在响应里带
+  `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数，超限的 `429` 也带）；
+  账号服务自身的限流（含 PAT 的创建与内省）与网关那一层都不发这组头
 
 ## 用令牌调用
 
