@@ -31,7 +31,7 @@ features:
     details: 采用作品 (Work)、表现 (Expression)、发行 (Release) 与载体 (Medium) 增强架构，条理清晰地组织多版本、多语言与曲目。
   - icon: ⚡
     title: 开放 API 与 Agent 友好
-    details: 提供开放的 REST API 与会话令牌 / OAuth 2.0 接入，实体查询、检索与写入均可程序化调用；写入需登录并具备对应权限码。
+    details: 提供开放的 REST API 与会话令牌 / OAuth 2.0 / 个人访问令牌（PAT）接入，实体查询、检索与写入均可程序化调用；写入需登录并具备对应权限码。
 ---
 
 ## 本站写什么

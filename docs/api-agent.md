@@ -129,7 +129,19 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 ## 3. 认证与权限码
 
-身份只来自账号服务（`metafusion-auth`）签发的 RS256 令牌：请求头 `Authorization: Bearer <token>` 或 Cookie `mf_session`，目录侧只验签。**平台不签发个人访问令牌**，没有 `mfp_` 前缀、`X-API-Key` 或 `catalog:write` scope；程序化接入用会话令牌或 OAuth 访问令牌（见 [认证与凭证](/api-auth)）。
+身份来自账号服务（`metafusion-auth`）：**会话 / OAuth 的 RS256 令牌**用请求头 `Authorization: Bearer <token>` 或 Cookie `mf_session`，目录侧只验签；
+或者**个人访问令牌（PAT，明文前缀 `mfp_`）**——目录侧把它送给账号服务的内省端点判定，适用于长期运行的 Agent 与 CI。
+
+- **长期接入用 PAT，不要共用某个人的会话令牌**：在设置页自助创建（`POST /api/auth/tokens`，需登录态，PAT 本身不能再创建 PAT），
+  明文只在创建响应里出现一次；`scopes` 填**权限码**（不是 `read` / `write`），且必须是账号自己当前持有的码，
+  超出本人权限的创建会被拒绝；
+- PAT 的**有效权限 = 账号现时权限 ∩ 令牌 scopes**：scopes 为空数组即"只有身份、零权限"，
+  任何权限码闸门都返回 `403`（**不会**按角色兜底）；权限被收回后令牌自动变窄；
+- 吊销、到期与权限收回在目录侧**最长 60 秒后生效**（下游缓存 60 秒内省结果），不要按"立即失效"写重试逻辑；
+- 错误只有两个稳定机器码：无效 / 已吊销 / 已过期 / 账号被封禁 → `401 invalid_token`；账号服务不可达 → `503 auth_unavailable`（重试，不要换凭据）。
+  形态非法的 `mfp_` 令牌在**读端点**也返回 401，与"会话令牌坏了按匿名继续"不同；
+- **没有 `X-API-Key` 认证方式**；scope 也不是 `catalog:write` 这类读写词表。完整口径（限额 10 张、`expires_in_days`、
+  吊销窗口、安全建议）见 [认证与凭证](/api-auth)。
 
 | 权限码 | 允许的操作 | 闸门位置 |
 | --- | --- | --- |
@@ -141,6 +153,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
 
 权限码来自令牌的 `permissions`：带 `*` 即全部目录权限；令牌完全没有 `permissions` 字段时（老令牌或未按权限组配置的实例）才按角色兜底——`admin` 放行全部目录码，`editor` 只放行 `catalog.entity.edit`，其余不放行。
+**PAT 身份不参与这条兜底**：它的权限就是内省返回的那一列，空着就是没有权限（即便账号是 admin）。
 
 ## 4. 写入契约
 
@@ -234,12 +247,14 @@ POST /api/catalog/entities/:id/unpublish
 | 400 | `invalid_term` / `invalid_type` / `invalid_position` | 词表值、业务类型或排序值不在允许集合内 | 用 definitions 里对应字段的 `vocabulary.terms` 与 `types` |
 | 400 | `invalid_status` | 状态值不在 `draft` / `pending_review` / `published` / `deleted` / `merged` 之内；或状态机不允许该动作（下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体） | 状态值按五档写；动作不合法先 `GET` 读回当前 `status`：已是 `draft` 不必下架，`deleted` / `merged` 要恢复只能新建 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段码不存在 | 从 definitions 取字段集与 `searchable`，不要按名称猜 |
-| 401 | `authentication_required` | 需要登录的端点没有有效令牌 | 重新登录或换用 OAuth 访问令牌 |
+| 401 | `authentication_required` | 需要登录的端点没有有效令牌（会话 / OAuth 令牌缺失或验签失败） | 重新登录或换用 OAuth 访问令牌 |
+| 401 | `invalid_token` | **PAT** 无效 / 已吊销 / 已过期 / 账号被封禁（不细分原因；读端点也照此返回） | 核对是不是把 `mfp_` 令牌写错或已被吊销；换一张新令牌，不要重试同一张 |
 | 403 | `forbidden` | 已登录但缺对应权限码，或不是该条目的可写者 | 核对令牌 `permissions`；发布、合并归生命周期权限 |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分两者） | 用查重响应里的 id；未发布条目只对创建者与持权限者可见 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
 | 429 | `rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避后重试 |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） | 停止写入，把错误码与请求摘要一起上报 |
+| 503 | `auth_unavailable` | PAT 请求问不到账号服务（内省不可达 / 未配置 `AUTH_URL`） | 这是依赖故障：**退避重试**，不要当成凭据问题去换令牌 |
 
 遇到表里没有的码：先用最小载荷复现一次排除自身形状问题，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`；仍无法解释就停止写入并按「实现缺口」上报，不要用近似数据填充，也不要绕过接口改库。
 

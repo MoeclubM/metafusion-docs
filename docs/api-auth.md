@@ -1,32 +1,90 @@
 ---
 title: "认证与凭证"
-description: "会话令牌、OAuth 2.0 / OIDC、注册与邀请、开发者中心。"
+description: "会话令牌、个人访问令牌（PAT）、OAuth 2.0 / OIDC、注册与邀请、开发者中心。"
 order: 31
 group: "api"
 ---
 
 # 认证与凭证
 
-认证由**账号服务**（`metafusion-auth`）负责：它签发 RS256 访问令牌，目录、互动、存储三个服务只验签、
-不查库、不签发。**平台不签发个人访问令牌（PAT）**——没有 `/api/auth/tokens` 端点，也没有 `mfp_` 前缀令牌、
-`X-API-Key` 或 `catalog:write` 这类 scope；程序化接入请用下面的会话令牌或 OAuth 2.0 客户端。
+认证由**账号服务**（`metafusion-auth`）负责：它既签发 RS256 访问令牌，也签发**个人访问令牌（PAT，明文前缀 `mfp_`）**；
+目录、互动、存储三个服务只验签、不签发，PAT 则交回账号服务的**内省端点**判定（三个服务用同一份契约，见下文）。
+**没有 `X-API-Key` 认证方式**，scope 也不是 `catalog:write` 这类读写词表——
+PAT 的 scopes 就是**权限码**本身。
 
-## 两种凭证
+## 三种凭证
 
 | 凭证 | 获取方式 | 有效期 | 用途 |
 |---|---|---|---|
 | 会话令牌 / Cookie | `POST /api/auth/login`（或 `/api/auth/register`） | 访问令牌 15 分钟，服务端会话兜底 24 小时 | 网页端与直接调用 API |
 | OAuth 2.0 授权码 | `/api/oauth/authorize` + `POST /api/oauth/token` | 由客户端配置决定（无 `refresh_token`，到期重新授权） | 第三方站点与 OIDC 接入 |
+| 个人访问令牌（PAT） | 登录后在设置页自助创建（`POST /api/auth/tokens`） | 创建时可选到期时间（最长 10 年），不填即永不过期 | 外部应用、Agent、CI 的长期机器接入 |
 
-两种凭证都可用请求头或 Cookie 携带，服务端两者各试一次：
+会话令牌与 OAuth 访问令牌都可用请求头或 Cookie 携带，服务端两者各试一次；PAT **只走请求头**：
 
 ```http
-Authorization: Bearer <token>
-Cookie: mf_session=<token>
+Authorization: Bearer <token>      # 会话令牌 / OAuth 访问令牌 / PAT（mfp_ 前缀）
+Cookie: mf_session=<token>         # 会话令牌
 ```
 
 第三方站点把 MetaFusion 作为授权方接入的完整契约（发现文档、同意页、scope、PKCE、换码与 userinfo、
 管理端接口、已知限制）见 [第三方站点接入 OAuth 授权](/oauth-integration)。
+
+## 个人访问令牌（PAT）
+
+外部应用、Agent 与 CI 的长期机器接入凭证，由账号服务签发，下游服务拿它去账号服务的内省端点判定：
+
+```http
+GET    /api/auth/tokens                  # 需登录：列出本人的令牌（含已吊销的，带 active=false）
+POST   /api/auth/tokens                  # 需登录：创建；201 响应体是明文唯一出现的地方
+DELETE /api/auth/tokens/{id}             # 需登录：吊销本人一张令牌（幂等）
+POST   /api/auth/tokens/introspect       # 下游服务内部调用，不是给用户调的
+```
+
+- **明文**：`mfp_` 前缀 + 43 个 base62 字符（32 字节随机数）；只在创建响应的 `token` 字段里出现一次。
+  库里只存 SHA-256 与展示前缀 `token_prefix`，**之后任何路径都取不回**——丢了只能吊销重建；
+- **创建请求体**：`{ "name": "…", "scopes": ["…"], "expires_in_days": 0 }`。`name` 必填（≤64 字，不必唯一）；
+  `expires_in_days` 省略或为 0 表示**永不过期**，负数或超过 3650（10 年）返回 `400 invalid_expiry`；
+- **`scopes` 是权限码**（`catalog.entity.edit` 这类），不是 `read` / `write` 词表：每个码必须是合法权限码、
+  且**创建者自己当前持有**。超出本人权限的码直接拒绝（`scope_not_granted: <code>`，不静默取交集，
+  否则用户会拿到一张比他要的更弱的令牌却不知情），非法码 `invalid_scope: <code>`；重复项去重并保持请求顺序。
+  空数组 `[]` 是**合法语义 = 仅身份、零权限**：这类令牌能通过"需登录"的读接口，但任何权限码闸门都返回 `403`，
+  **不会回落到角色兜底**（管理员持空 scopes 的令牌同样只剩身份）；
+- **实际权限 = 账号现时权限 ∩ 令牌 scopes**，由内省每次重新计算：账号权限被收回后，令牌的有效权限随之变窄；
+- **限额**：每个账号**未吊销**的令牌最多 10 张，超出返回 `token_limit_reached`（已吊销的不占额度）；
+- **到期与吊销**：`DELETE /api/auth/tokens/{id}` 只写 `revoked_at`、不删行（列表里仍能看到它已失效），
+  幂等；别人的或不存在的一律 `token_not_found`（两种情况不区分，避免探测）；
+- **吊销窗口**：下游服务把内省结果**进程内缓存 60 秒**，所以吊销、到期与权限收回在下游侧**最长 60 秒后才生效**
+  （三个服务用的是同一个 60 秒窗口）。不要按"立即失效"设计自动化流程；账号被封禁后，既有 PAT 同样要等下一个窗口。
+
+### 使用方式与错误码
+
+```http
+Authorization: Bearer mfp_…
+```
+
+- 只支持 `Authorization: Bearer`：**没有 `X-API-Key` 认证方式**。带 `mfp_` 前缀的 Bearer 以它为准，
+  **不会回落到 Cookie**（浏览器里同时存在别人的 `mf_session` 也不会被当成身份）；PAT 请求不写任何 Cookie；
+- 无效、已吊销、已过期、账号被封禁一律 `401 {"error":"invalid_token"}`（**不细分原因**，细分会变成枚举探测口）；
+  形态明显非法（前缀后的长度或字符集不在契约窗口内）在本地直接 401，不会去问账号服务；
+- 账号服务不可达、或该服务没配置 `AUTH_URL` → `503 {"error":"auth_unavailable"}`：这是依赖故障，
+  **重试**才对，不要当成"凭据无效"去换令牌。依赖故障的结论不缓存，账号服务恢复后立刻可用；
+- `token_prefix`（明文前 12 字符）用于在列表里指认"这是哪一张"，不足以反推明文；
+- **PAT 不能调 `/api/auth/*`**：它是机器接入凭据、不是登录态（拿 PAT 打自助端点会 `401 authentication_required`），
+  所以"PAT 不能再创建 PAT"是成立的——自助创建 / 列出 / 吊销只能用会话令牌；
+- 覆盖面：PAT 是**下游服务各自内省**的——目录（`/api/` 的兜底前缀，含 `/api/catalog/*`、`/api/importer/*`、
+  `/api/exchange/*`）、互动（`/api/community/*` 等）、存储（`/api/storage/*`）用的是同一份契约
+  （前缀、60 秒缓存窗口、`401 invalid_token` / `503 auth_unavailable` 一致）。**以目标实例的响应为准**：
+  还没接入这一版的服务会把 `mfp_` 当成普通令牌验签失败处理（读端点按匿名 200、写端点 `401 authentication_required`），
+  不会返回 PAT 的两个机器码——遇到这种表现先怀疑部署进度，别改令牌。
+
+### 安全建议
+
+- 明文只显示一次：立刻存进环境变量或密钥管理器，**不要粘贴进聊天、Issue、配置文件或提交历史**；
+  泄漏时第一步是吊销（在设置页，或 `DELETE /api/auth/tokens/{id}`）；
+- scopes 取最小必要：一张令牌只给一个用途需要的权限码；给 CI 与本地脚本各建一张，便于单独吊销；
+- 长期令牌不会自动过期：给外部集成设一个到期时间并定期轮换；
+- 下游服务不把明文或哈希写进日志与错误信息（哈希只作进程内缓存键）；排障时用 `token_prefix` 指认令牌。
 
 ## 注册与实例准入
 
@@ -37,6 +95,9 @@ POST /api/auth/register   # { username, email?, password, invite_code? }，成�
 
 - 是否开放注册是**持久化的实例设置**，不是代码常量：`registration_enabled` 默认关闭，
   关闭时注册返回 `registration_closed`，由管理员用 `PUT /api/admin/settings`（需 `auth.settings.manage`）打开
+- 实例设置的**读取**在账号管理台「实例与设置」（`/admin/account/instance`，同样需 `auth.settings.manage`），
+  该页**只读**：它只渲染接口返回的键值（后端新增设置项不用改页面），没有写入控件。要改设置只能直接调
+  `PUT /api/admin/settings`
 - 打开后若 `invite_required` 为真，请求必须带有效 `invite_code`：缺失 `invite_required`，
   无效 / 已撤销 / 过期 `invalid_invite_code`，次数用尽 `invite_exhausted`
 - 用户名 2–80 字符且不含空白，密码 12–72 字符；用户名或邮箱被占用返回 `username_or_email_taken`
@@ -201,8 +262,12 @@ DELETE /api/developer/apps/:id
   `/api/admin/users`、`/api/admin/groups`、`/api/admin/oauth/`、`/api/admin/settings`、`/api/admin/invites` 都是 `burst 50`）
 - 账号服务另按 IP 对认证写入类接口做固定窗口限流（**默认 15 次/分钟**；速率与开关是实例设置
   `auth_rate_limit_enabled` / `auth_rate_limit_per_minute`，`false` 时不限流，改完立即生效）：`/api/auth/login`、`/api/auth/refresh`、
-  `/api/auth/register`、`/api/setup`、`/api/oauth/authorize`、`/api/oauth/token`，以及开发者中心的
+  `/api/auth/register`、`/api/setup`、`/api/oauth/authorize`、`/api/oauth/token`、
+  `POST /api/auth/tokens` 与 `DELETE /api/auth/tokens/:id`，以及开发者中心的
   `POST /api/developer/apps` 与 `POST /api/developer/apps/:id/rotate-secret`
+- PAT 的内省端点（`POST /api/auth/tokens/introspect`，下游服务调用）另有自己的双维度固定窗口限流：
+  每来源 IP 600 次/分钟、每令牌 60 次/分钟，超限 `429 rate_limited` 带 `Retry-After`。它**不读**实例设置里的
+  认证写入限流开关——内省是读语义，为了压注册洪水关掉写入限流不该连带松开下游鉴权
 - 超限返回 `429` 与 `Retry-After`；限流按 IP 与路由判定，响应头不带 `X-RateLimit-*` 系列
 
 ## 用令牌调用
@@ -216,7 +281,17 @@ curl -X POST /api/catalog/entities \
   -H "Authorization: Bearer <session-token>" \
   -H "Content-Type: application/json" \
   -d '{"entity":{"kind":"work","title":"新作品","original_language":"ja","translations":{"zh-CN":{"title":"新作品"}}},"expected_version":0,"edit_note":"initial import per official source","sources":[{"kind":"url","citation":"官网","url":"https://example.com"}]}'
+
+# 同一写入换成长期令牌（Agent / CI）：明文只在创建时看过一次，放进环境变量
+curl -X POST /api/catalog/entities \
+  -H "Authorization: Bearer $MF_PAT" \
+  -H "Content-Type: application/json" \
+  -d '{ ...同上... }'
 ```
+
+同一枚令牌能做什么，只由它在创建时选的 scopes（∩ 账号现时权限）决定：要写入就至少给 `catalog.entity.edit`，
+要发布 / 合并再给 `catalog.lifecycle.manage`。令牌不够权限时返回 `403 forbidden`，
+这与"令牌无效 / 已吊销"的 `401 invalid_token` 是两回事，别混用处理分支。
 
 ## 相关页面
 
