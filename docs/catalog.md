@@ -21,13 +21,15 @@ MetaFusion 采用基于实体责任骨架与动态目录定义的纯净架构。
 
 Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`position`、`locator`。允许跨作品引用，但被收录表达的 Work 必须明确列入发行的 `subjects`。不要重复创建同一个录音。专辑的概念编排使用有序 `includes` 关系；实际版次顺序以载体和 TrackContent 为准。
 
-`locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景，取并集 fields 收敛可用子字段与必填（展示编辑顺序即并集顺序，`relative_to` 锚点置前）；无匹配场景时回退全局组（旧文档无 `schemes` 键时同样回退，保持向后兼容）。匹配场景任一声明 `require_range` 时，`locator` 至少一个内容语义（`semantics=content`，如时间码）子字段非空，否则报 `range_required`。新增独立字段 `isbn`（release 级产品标识，与品番/条码同组展示）与 `duration_source`（entity 引用的时长来源，仅 expression 可写，解释同一表达在不同版本中的时长差异），音乐场景模板已引用 `duration_source`。
+`locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景；Track 的定位和收录附加字段还可按所属 Medium 的 `format` 匹配 `medium_formats`（空为不限）。命中方案后取并集 fields 收敛可用子字段与必填，`relative_to` 锚点置前；无匹配时回退全局组。改变 Medium 格式会回放现有 Track，不允许留下与新方案冲突的定位。任一匹配方案声明 `require_range` 时，`locator` 至少一个 `semantics=content` 子字段非空，否则报 `range_required`。独立字段 `isbn` 属于 Release；`duration_source` 仅 Expression 可写。
 
 关系类型全部由服务端 definitions 驱动，运行时清单以 `GET /api/catalog/definitions` 为准。署名类关系（work/content_unit/expression/release → agent）含 `created_by / performed_by / composed_by / lyricist_of / arranged_by / directed_by / written_by / illustrated_by / narrated_by / voiced_by / photographed_by / modeled_by / developed_by`；译者用 `translated_by`（work / content_unit / expression → agent，组 `credits`），不再挤占通用兜底；角色登场为 `character_in`（agent → work/collection，番位落 `character_rank` 词表项，来源职位原文落 `credit_role`）；当来源职位没有贴切关系码时用通用兜底 `credit_for`（work/content_unit/expression/release → agent，职位原文落 `credit_role`），已有精确关系码时不再重复建边。关系通用可选字段为 `role`、`credit_role`、`character_rank`、`context`、`character`、`language`、`begin_date`、`end_date`、`scope`。详情页的关系分区标题与顺序同样读各关系定义的分组声明，前端不写死关系码名单。
 
 ## 前端路由
 
 作品、发行版、载体有专用详情路由 `/works/[id]`、`/releases/[id]`、`/mediums/[id]`；通用兜底与编辑入口为 `/catalog/[id]`（未知 kind 与 `?edit=1` 直达编辑）。探索为 `/explore`，对比为 `/compare`，创建入口为 `/new`（不带层级时落到编目枢纽 `/contribute`），管理后台为 `/admin`（**只管理元数据目录**：实体、定义、货架、外部库、导入审核；账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」）。
+
+发行目录可一次读取 `GET /api/catalog/releases/{id}/toc`：返回发行、按位置排序的 Medium 与 Track、去重的可见 Expression 及定义版本。响应基于同一数据库快照；不可见子项不会泄露。单实体接口仍可用于编辑与独立详情。
 
 ## 七个编目例子
 
@@ -49,8 +51,9 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 2. 在共享字段库定义文本、多语言、数字、日期、布尔、网址、词表、实体引用、列表或字段组；在类型与关系中引用同一个字段。
 3. 定义关系的正反向名称、端点层级与类型、上下文、基数、对称性、无环和显示分组。
 4. 定义模板分区、字段顺序、列表列、目录模式与关系分区顺序（`relation_groups`）。
-5. 在 schemes 页签按槽位（`locator` / `inclusion_attributes` / `subject_attributes`）声明场景子集：kinds/types 白名单（空为不限）、可用子字段（顺序即展示编辑顺序）、必填子集（⊆ fields）、`require_range`（仅 locator，要求至少一个内容语义子字段有值）。种子示例 `vinyl_track_locator`（`track` + `relative_to/chapter/path`）仅作示范，可被后台删除。
-6. 填写编辑说明与来源，保存草稿，检查既有数据影响，然后发布。冲突或过期基础版本会阻止发布。
+5. 在 schemes 页签按槽位声明场景子集：kinds/types 白名单、Track 所属载体的 `medium_formats`、可用子字段、必填子集，以及仅 locator 可用的 `require_range`。黑胶示例 `vinyl_track_locator` 默认关闭，可在后台按需启用或删除。
+6. 在 `role` 词表中用“作为附赠内容展示”控制发行页的附赠分组；新增用途词项不需要改前端代码。
+7. 填写编辑说明与来源，保存草稿，检查既有数据影响，然后发布。冲突或过期基础版本会阻止发布。
 
 正在使用的定义请停用，不要删除。停用值可以保留并继续显示，不能在新数据中重新使用。发布后表单和详情读取新的定义；无专用模板的类型使用通用展示。
 
