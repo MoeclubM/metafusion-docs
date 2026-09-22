@@ -17,6 +17,8 @@ MetaFusion 采用基于实体责任骨架与动态目录定义的纯净架构。
 
 类型可以组合；简单作品无需凑齐全部层级。`position` 为非负排序整数，`number` 为原始印刷编号。Expression 的 `work_id`、Medium 的 `release_id` 和 Track 的 `medium_id` 为固定所属关系，普通编辑不可跨域移动。目录父子必须同域且无环。
 
+后台 GUI 可新增和编辑业务类型、字段、词表、模板与实体关系。`definitions.structure` 用于向前端描述固定归属外键和收录入口；非空结构定义必须保留数据库实际支持的字段、目标 kind、必填性、Release `subjects` 与 Track `contents`，否则草稿保存返回 `fixed_structure_mismatch`。扩展骨架外键或收录容器需要数据库与服务端改动。
+
 Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`position`、`locator`。允许跨作品引用，但被收录表达的 Work 必须明确列入发行的 `subjects`。不要重复创建同一个录音。专辑的概念编排使用有序 `includes` 关系；实际版次顺序以载体和 TrackContent 为准。
 
 `locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景，取并集 fields 收敛可用子字段与必填（展示编辑顺序即并集顺序，`relative_to` 锚点置前）；无匹配场景时回退全局组（旧文档无 `schemes` 键时同样回退，保持向后兼容）。匹配场景任一声明 `require_range` 时，`locator` 至少一个内容语义（`semantics=content`，如时间码）子字段非空，否则报 `range_required`。新增独立字段 `isbn`（release 级产品标识，与品番/条码同组展示）与 `duration_source`（entity 引用的时长来源，仅 expression 可写，解释同一表达在不同版本中的时长差异），音乐场景模板已引用 `duration_source`。
