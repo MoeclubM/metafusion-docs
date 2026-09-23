@@ -23,6 +23,8 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 `locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景；Track 的定位和收录附加字段还可按所属 Medium 的 `format` 匹配 `medium_formats`（空为不限）。命中方案后取并集 fields 收敛可用子字段与必填，`relative_to` 锚点置前；无匹配时回退全局组。改变 Medium 格式会回放现有 Track，不允许留下与新方案冲突的定位。任一匹配方案声明 `require_range` 时，`locator` 至少一个 `semantics=content` 子字段非空，否则报 `range_required`。独立字段 `isbn` 属于 Release；`duration_source` 仅 Expression 可写。
 
+`role` 词表中的可选 `is_bonus` 是发行详情的附赠分组语义。种子将 `supplement` 标为附赠；旧定义缺失该标记时，种子合并只补缺失值，后台明确关闭的 `false` 不会被重新打开。新增或调整词项可在 Definitions GUI 中维护，不需要前端新增硬编码判断。
+
 关系类型全部由服务端 definitions 驱动，运行时清单以 `GET /api/catalog/definitions` 为准。署名类关系（work/content_unit/expression/release → agent）含 `created_by / performed_by / composed_by / lyricist_of / arranged_by / directed_by / written_by / illustrated_by / narrated_by / voiced_by / photographed_by / modeled_by / developed_by`；译者用 `translated_by`（work / content_unit / expression → agent，组 `credits`），不再挤占通用兜底；角色登场为 `character_in`（agent → work/collection，番位落 `character_rank` 词表项，来源职位原文落 `credit_role`）；当来源职位没有贴切关系码时用通用兜底 `credit_for`（work/content_unit/expression/release → agent，职位原文落 `credit_role`），已有精确关系码时不再重复建边。关系通用可选字段为 `role`、`credit_role`、`character_rank`、`context`、`character`、`language`、`begin_date`、`end_date`、`scope`。详情页的关系分区标题与顺序同样读各关系定义的分组声明，前端不写死关系码名单。
 
 ## 前端路由
