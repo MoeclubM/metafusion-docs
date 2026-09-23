@@ -9,8 +9,6 @@ group: "start"
 
 ## 开放元数据
 
-MetaFusion 致力于构建开放、规范的多媒体资源与元数据共建库：
-
 - **高度结构化**：按 LRM 分层思想落成固定八类实体骨架（主体 Agent / 集合 Collection / 作品 Work / 内容单元 ContentUnit / 内容表达 Expression / 发行版本 Release / 载体 Medium / 收录位置 Track），类型与字段由服务端动态定义驱动。
 - **稳定可引用**：每条实体具备固定 UUID 与版本修订历史，便于跨平台引用与元数据集成。
 - **开放互联**：提供标准 REST API，支持个人应用、社区工具与 AI Agent 无缝调用。

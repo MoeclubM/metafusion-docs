@@ -90,4 +90,4 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
 ## SEO
 
 - 元数据页 SSR 可被爬虫收录
-- 媒体二进制走鉴权接口（未登录取不到内容）；`robots.txt` 目前只有 `User-agent: *` + `Allow: /`，没有按路径禁止抓取的规则
+- 媒体二进制按绑定实体可见性控制；公开实体绑定的文件可匿名读取。`robots.txt` 仅控制抓取索引，不承担访问权限判定。
