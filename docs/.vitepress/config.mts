@@ -30,7 +30,7 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: '📖 平台使用指南',
+        text: '平台使用指南',
         items: [
           { text: '平台概览', link: '/overview' },
           { text: '设计理念', link: '/philosophy' },
@@ -39,7 +39,7 @@ export default defineConfig({
         ]
       },
       {
-        text: '🏛️ 数据体系与编目规范',
+        text: '数据体系与编目规范',
         items: [
           { text: '固定层级与动态定义', link: '/catalog' },
           { text: '权威编目与审查准则', link: '/curation-guide' },
@@ -48,14 +48,14 @@ export default defineConfig({
         ]
       },
       {
-        text: '🤖 AI Agent 与自动化协作',
+        text: 'AI Agent 与自动化协作',
         items: [
           { text: 'AI Agent 接入与自动化编目协作指南', link: '/agent-integration' },
           { text: 'AI Agent 自动化 API 与工具规范', link: '/api-agent' }
         ]
       },
       {
-        text: '⚡ 开放 API 与开发者专区',
+        text: '开放 API 与开发者专区',
         items: [
           { text: 'API 概览', link: '/api-overview' },
           { text: '认证与凭证', link: '/api-auth' },
@@ -67,7 +67,7 @@ export default defineConfig({
         ]
       },
       {
-        text: '✍️ 社区共建与编辑规范',
+        text: '社区共建与编辑规范',
         items: [
           { text: '词条编辑与合并规范', link: '/editing-guide' },
           { text: '资源收录与投稿标准', link: '/contribute-guide' },
@@ -75,7 +75,7 @@ export default defineConfig({
         ]
       },
       {
-        text: '📜 社区条款与支持',
+        text: '社区条款与支持',
         items: [
           { text: '服务条款', link: '/terms-of-service' },
           { text: '隐私政策', link: '/privacy' },
