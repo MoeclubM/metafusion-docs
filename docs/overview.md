@@ -7,11 +7,11 @@ group: "start"
 
 # 平台概览
 
-MetaFusion 是一个**开放媒体资源站与元数据共建平台**，专注于 ACG、音乐、影视、文学等多元媒体资源的收录与结构化整理。
+MetaFusion 是一个开放媒体资源站与元数据共建平台，专注于 ACG、音乐、影视、文学等多元媒体资源的收录与结构化整理。
 
 ## 核心定位
 
-> **公开元数据，受控媒体资源。** 平台提供公开的元数据索引、标签与货架分类、关键词检索，以及注册用户参与的词条编辑与社区贡献能力，并对外开放 REST API 供程序化调用。
+> 公开元数据，受控媒体资源。平台提供公开的元数据索引、标签与货架分类、关键词检索，以及注册用户参与的词条编辑与社区贡献能力，并对外开放 REST API 供程序化调用。
 
 ## 目标群体
 
@@ -31,18 +31,28 @@ MetaFusion 是一个**开放媒体资源站与元数据共建平台**，专注�
 
 ## 多系统解耦生态架构
 
-MetaFusion 整体采用**「元数据系统为主项目，周边外围子系统解耦自治」**的架构矩阵（下面括号里是各服务的**响应头标记** `X-MetaFusion-Service`；编排里的容器名分别是 `backend` / `auth` / `storage` / `community` / `gateway`）：
+MetaFusion 整体采用「元数据系统为主项目，周边外围子系统解耦自治」的架构矩阵。
 
-- **元数据核心系统 (metafusion-catalog)**：**主项目**，聚焦于固定实体骨架（Agent, Collection, Work, ContentUnit, Expression, Release, Medium, Track）、动态定义引擎、关系图谱与修订历史。仅依赖 PostgreSQL 即可独立运行；检索走 PostgreSQL 子串匹配（OpenSearch 容器已随编排部署，但 Go 侧尚未接入），限流分两层：网关的 `limit_req` 与目录服务内部分重路由的进程内限流。
-- **账号与身份认证中心 (metafusion-auth)**：独立身份服务，提供注册与登录、令牌签发（RS256 访问令牌 + 服务端会话，外部应用用的 `mfp_` 个人访问令牌也在这一侧签发与内省）、基于权限组与权限码的授权、OAuth 2.0 / OIDC 接入与实例准入设置。
+- **元数据核心系统 (metafusion-catalog)**：主项目，聚焦固定实体骨架（Agent, Collection, Work, ContentUnit, Expression, Release, Medium, Track）、动态定义引擎、关系图谱与修订历史。仅依赖 PostgreSQL 即可独立运行；检索走 PostgreSQL 子串匹配（OpenSearch 容器已随编排部署，但 Go 侧尚未接入），限流分两层：网关的 `limit_req` 与目录服务内部分重路由的进程内限流。
+- **账号与身份认证中心 (metafusion-auth)**：独立身份服务，提供注册与登录、基于权限组与权限码的授权、OAuth 2.0 / OIDC 接入与实例准入设置。令牌签发包括 RS256 访问令牌 + 服务端会话，外部应用用的 `mfp_` 个人访问令牌也在这一侧签发与内省。
 - **资源存储与下载管理中枢 (metafusion-storage)**：原始文件归档与分发，支持本地对象模式与 S3 对象存储、sha256 内容寻址校验，并按绑定实体可见性授权下载（不做转码）。
 - **社区交流与论坛系统 (metafusion-community)**：独立讨论板块与主题回复，以及实体短评、收藏与互动记录。
-- **API 网关与边缘路由**：单端口 Nginx 反向代理，按 `/api/*` 前缀把流量分流到目录、账号、互动与存储，并把 `/docs` 反代到文档站、把三个自带管理台按 `/admin/account/`、`/admin/community/`、`/admin/storage/` 挂到同一个域；生效矩阵在主仓库 `deploy/nginx.conf`（compose 的 `gateway` 服务）。`metafusion-api-gateway` 仓库现在只剩切流自检脚本，旧矩阵已归档、不参与部署。
+- **API 网关与边缘路由**：单端口 Nginx 反向代理，按 `/api/*` 前缀把流量分流到目录、账号、互动与存储，并把 `/docs` 反代到文档站、把三个自带管理台挂到同一个域。
 - **开发者文档站点 (metafusion-docs)**：独立 VitePress 文档工程，承载对外规范、API 文档与 Agent 接入指引。
+
+::: tip 服务标识与部署细节
+上面括号里是各服务的响应头标记 `X-MetaFusion-Service`；编排里的容器名分别是 `backend` / `auth` / `storage` / `community` / `gateway`。
+
+网关把三个自带管理台按 `/admin/account/`、`/admin/community/`、`/admin/storage/` 挂到同一个域，生效矩阵在主仓库 `deploy/nginx.conf`（compose 的 `gateway` 服务）。`metafusion-api-gateway` 仓库现在只剩切流自检脚本，旧矩阵已归档、不参与部署。
+:::
 
 ## 管理台按域拆分
 
-四个管理台是**四个独立应用**（各自构建与发布），网关在同一个域下按路径聚合。**主站的 `/admin` 现在只管理元数据目录**——账号、社区、存储的管理面已各自独立，这是最容易被误解的一点：
+四个管理台是四个独立应用（各自构建与发布），网关在同一个域下按路径聚合。
+
+::: warning 注意
+主站的 `/admin` 现在只管理元数据目录——账号、社区、存储的管理面已各自独立，这是最容易被误解的一点。
+:::
 
 | 要管什么 | 去哪里 | 走哪些接口 |
 |---|---|---|
@@ -51,7 +61,9 @@ MetaFusion 整体采用**「元数据系统为主项目，周边外围子系统�
 | 板块配置、主题、帖子治理 | `/admin/community/` | `/api/community/*` |
 | 存储用量、资产查询、绑定解绑 | `/admin/storage/` | `/api/storage/*` |
 
-三个自带管理台分别由 `metafusion-auth`、`metafusion-community`、`metafusion-storage` 的 `admin/` 目录承载，与主前端并列，不经主前端路由；三个自带管理台的路径不带尾斜杠时由网关 301 到带尾斜杠的形式（主站 `/admin` 归主前端自己处理）。页面路径不受 `/api/` 的限流口径约束（网关只对 `/api/` 挂限流），界面里的数据请求仍旧走 `/api/*`、按各自权限码放行。
+三个自带管理台分别由 `metafusion-auth`、`metafusion-community`、`metafusion-storage` 的 `admin/` 目录承载，与主前端并列，不经主前端路由。三个自带管理台的路径不带尾斜杠时由网关 301 到带尾斜杠的形式（主站 `/admin` 归主前端自己处理）。
+
+页面路径不受 `/api/` 的限流口径约束（网关只对 `/api/` 挂限流），界面里的数据请求仍旧走 `/api/*`、按各自权限码放行。
 
 ## 访问与权限模型
 

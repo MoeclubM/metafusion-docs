@@ -17,14 +17,23 @@ group: "api"
 
 ### 1.1 角色与三条铁律
 
-- **角色标识**：MetaFusion Curator & Cataloging Reviewer（编目审查员）
-- **职责范围**：跨媒介（文学、漫画、动画、影视、音乐、游戏）的考据、层级建模、关系织网、审计留痕与写后复核
-- **三条铁律**：
-  1. **题名纯净**：Work 只保留能辨识创作母体的主名；季数、卷号、载体、规格、画质、包装、字幕组信息归 Release / Medium / Track 或标签
-  2. **写入留痕**：每次写入都带具体 `edit_note` 和至少一条 `sources` 项（`{kind, citation, url}`），缺证据服务端一律拒绝
-  3. **检索查重优先**：创建前先查重，能复用就不新建；只有证据显示是不同创作实体时才新建 Work
+角色标识：MetaFusion Curator & Cataloging Reviewer（编目审查员）。
 
-题名纯净、ISBN 校验位、封面宽高比属于**编目规范**（社区准则与技能约束），不是接口拦截：服务端不会因为题名里带"第 1 季"或"1080P"而拒绝写入，那是建模错误；`attributes` 里的画幅、书号等值也只在该字段被 definitions 声明时按定义校验。规范细节见 [权威编目与审查准则](/curation-guide) 与 [元数据目录](/catalog)。
+职责范围：跨媒介（文学、漫画、动画、影视、音乐、游戏）的考据、层级建模、关系织网、审计留痕与写后复核。
+
+三条铁律：
+
+1. **题名纯净**：Work 只保留能辨识创作母体的主名。季数、卷号、载体、规格、画质、包装、字幕组信息归 Release / Medium / Track 或标签。
+2. **写入留痕**：每次写入都带具体 `edit_note` 和至少一条 `sources` 项（`{kind, citation, url}`）。缺证据服务端一律拒绝。
+3. **检索查重优先**：创建前先查重，能复用就不新建。只有证据显示是不同创作实体时才新建 Work。
+
+::: warning 注意：编目规范不是接口拦截
+题名纯净、ISBN 校验位、封面宽高比属于编目规范（社区准则与技能约束），不是接口拦截。
+
+服务端不会因为题名里带"第 1 季"或"1080P"而拒绝写入，那是建模错误；`attributes` 里的画幅、书号等值也只在该字段被 definitions 声明时按定义校验。
+
+规范细节见 [权威编目与审查准则](/curation-guide) 与 [元数据目录](/catalog)。
+:::
 
 ### 1.2 System Prompt 模版
 
@@ -56,7 +65,7 @@ group: "api"
 - [metafusion-curator](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/metafusion-curator/SKILL.md)：流程、证据、API 写入与回读、审查结论格式
 - [lrm-catalog-standards](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/lrm-catalog-standards/SKILL.md)：实体边界、发行版命名、内容复用
 
-技能里的枚举是说明书，不是运行时事实：实际可用的字段码与关系码仍以目标实例的 `GET /api/catalog/definitions` 为准。
+技能里的枚举是说明书，不是运行时事实。实际可用的字段码与关系码仍以目标实例的 `GET /api/catalog/definitions` 为准。
 
 ## 2. 七步标准作业流程
 
@@ -75,15 +84,48 @@ group: "api"
 | 6 关系织网 | 只用 enabled 的关系码；无环关系不得成环 | `POST /api/catalog/relations` |
 | 7 写后复核与报告 | 回读实体、关系、收录与修订；结论分「通过 / 需补证据 / 需修正 / 实现缺口」 | `GET …/{id}`、`/relations`、`/occurrences`、`/revisions` |
 
-**各步要点**
+::: warning 注意：没有跨层级的原子提交端点
+按 agent/work → content_unit/expression → release → medium → track → relations 的顺序逐层提交，记录每步返回的 id。失败就停下并报告已写入的部分。
+:::
 
-1. 统一入口是 `/api`，没有版本前缀；先确认令牌有效、`permissions` 覆盖要用的端点和状态。
-2. `q` 是题名或 `translations` 整段文本的子串匹配；`limit` 默认 50、上限 100。来源必须与字段对应：作品身份、发行规格、篇目与表达、关系各要各自的证据。
-3. 先决定每层放什么再写载荷。简单作品不必凑齐全部层级；没有来源就不造层级。优先核对出版/发行/制作/权利方等一手资料；来源需逐条打开，确认其页面确实支持所填事实，并在 citation 中说明对应字段。来源互相冲突、访问失败或事实未知时，标记未核实、留空并报告，不能猜填或从相邻条目推断。封面优先权利方提供的高清原图，除确认图源外还要核实再利用许可/授权；官方图源不自动代表可任意使用，权利不明时不使用。
-4. `translations` 是按 locale 分组的对象，发布态要求至少一条翻译行。
-5. 创建一律 `entity.id` 留空、`expected_version` 传 0；更新先 `GET` 再 `PUT` 整实体替换。
-6. 关系两端实体必须先存在；职位原文、番位、语言等上下文放 `attributes`。
-7. 回读校验，别把「POST 返回 200」当成建模正确；请求成功也不等于全库图谱已证明无环。
+### 第 1 步：确认实例与工具
+
+- 统一入口是 `/api`，没有版本前缀。
+- 先确认令牌有效，且 `permissions` 覆盖要用的端点和状态。
+
+### 第 2 步：考据与查重
+
+- `q` 是题名或 `translations` 整段文本的子串匹配；`limit` 默认 50、上限 100。
+- 来源必须与字段对应：作品身份、发行规格、篇目与表达、关系各要各自的证据。
+- 优先核对出版、发行、制作、权利方等一手资料。
+- 来源需逐条打开，确认其页面确实支持所填事实，并在 citation 中说明对应字段。
+- 来源互相冲突、访问失败或事实未知时：标记未核实、留空并报告，不能猜填或从相邻条目推断。
+- 封面优先权利方提供的高清原图，除确认图源外还要核实再利用许可 / 授权。官方图源不自动代表可任意使用，权利不明时不使用。
+
+### 第 3 步：层级建模
+
+- 先决定每层放什么再写载荷。
+- 简单作品不必凑齐全部层级；没有来源就不造层级。
+
+### 第 4 步：题名清洗与多语言
+
+- Work 题名只留主名，规格移到发行层。
+- `translations` 是按 locale 分组的对象，发布态要求至少一条翻译行。
+
+### 第 5 步：按依赖顺序写入
+
+- 创建一律 `entity.id` 留空、`expected_version` 传 0。
+- 更新先 `GET` 再 `PUT` 整实体替换。
+
+### 第 6 步：关系织网
+
+- 关系两端实体必须先存在。
+- 职位原文、番位、语言等上下文放 `attributes`。
+
+### 第 7 步：写后复核与报告
+
+- 回读校验，别把「POST 返回 200」当成建模正确。
+- 请求成功也不等于全库图谱已证明无环。
 
 ## 3. 八类 kind 的层级建模
 
@@ -100,10 +142,11 @@ group: "api"
 
 归属与父子规则：
 
-- `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`；缺归属返回 `parent_required`
-- `parent_id` 只能指向同域父节点（同一 Work 的篇目、同一 Release / Medium 的载体与位置），跨域父子由库内复合外键拦截
-- `release` 的 `subjects` 必须覆盖其载体实际收录的全部 Work，`role` 取 `primary` / `compilation` / `supplement`；漏声明返回 `undeclared_release_subject`
-- `position` 是非负排序整数，`number` 保留官方原文（`A1`、`EX` 不要改写成整数）
+- `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`。缺归属返回 `parent_required`。
+- `parent_id` 只能指向同域父节点（同一 Work 的篇目、同一 Release / Medium 的载体与位置）。跨域父子由库内复合外键拦截。
+- `release` 的 `subjects` 必须覆盖其载体实际收录的全部 Work。
+- `role` 取 `primary` / `compilation` / `supplement`，漏声明返回 `undeclared_release_subject`。
+- `position` 是非负排序整数，`number` 保留官方原文（`A1`、`EX` 不要改写成整数）。
 
 ## 4. 盒装、合集与跨 Work 收录
 
@@ -126,15 +169,17 @@ group: "api"
 
 建模规则：
 
-1. **汇编独立建档**：为盒装建汇编 Work，在其下建该盒装的 Release；不要把盒装品番挂到其中任何一部作品
-2. **subjects 声明齐全**：该 Release 的 `subjects` 列出实际收录的全部 Work，盒装内的作品用 `compilation`，主作品用 `primary`，附加内容用 `supplement`
-3. **按实际包装建载体**：13 张 BD 就是 13 个 Medium（`format` 取 definitions 中 `format` 词表的项），特典盘同样按真实盘片建
-4. **分碟回溯到作品**：每个 Medium 下 Track 的 `contents[].expression_id` 指向对应作品下的 Expression——跨 Work 引用是允许的，前提是 `subjects` 已声明
-5. **组成关系**：用 `includes`（`collection`/`work` → `work`/`collection`，声明无环且 aggregate）表达"谁被这套收录"；同一角色跨作品的登场用多条 `character_in`
+1. **汇编独立建档**：为盒装建汇编 Work，在其下建该盒装的 Release。不要把盒装品番挂到其中任何一部作品。
+2. **subjects 声明齐全**：该 Release 的 `subjects` 列出实际收录的全部 Work。盒装内的作品用 `compilation`，主作品用 `primary`，附加内容用 `supplement`。
+3. **按实际包装建载体**：13 张 BD 就是 13 个 Medium，`format` 取 definitions 中 `format` 词表的项。特典盘同样按真实盘片建。
+4. **分碟回溯到作品**：每个 Medium 下 Track 的 `contents[].expression_id` 指向对应作品下的 Expression。跨 Work 引用是允许的，前提是 `subjects` 已声明。
+5. **组成关系**：用 `includes`（`collection`/`work` → `work`/`collection`，声明无环且 aggregate）表达"谁被这套收录"。同一角色跨作品的登场用多条 `character_in`。
 
 ## 5. 表达跨发行复用
 
-`Expression` 是"收录到 Track 上的那一层"（原版母带、正片剪辑、译本正文、分集）。同一表达出现在多个发行里时，只建**一个** Expression，各发行的 Track 通过 `contents[].expression_id` 指向它：
+`Expression` 是"收录到 Track 上的那一层"（原版母带、正片剪辑、译本正文、分集）。
+
+同一表达出现在多个发行里时，只建一个 Expression，各发行的 Track 通过 `contents[].expression_id` 指向它：
 
 ```json
 {
@@ -154,10 +199,22 @@ group: "api"
 }
 ```
 
-- **contents 项的形状**：`{expression_id, position, locator}`；`locator` 走 definitions 的 `locator` 组字段（页码、时间码、文件路径、章节），整轨收录允许 `{}`
-- **反查收录**：`GET /api/catalog/entities/{id}/occurrences`——expression 返回自身，`content_unit` / `work` 返回其表达；发行页要一次取多条表达用 `POST /api/catalog/expressions/details`（请求体 `{ids:[…]}`，上限 500）
-- **表达之间的关系**：译本是 `translation_of`、修订是 `revision_of`、翻唱是 `cover_of`、别版是 `alternate_take_of`（均为 expression → expression，声明无环）
-- **版次差异不要改共用表达**：同一表达在不同发行的时长、署名差异属于该版次，写在该 Track 自己的 `attributes`，不要改共用 Expression
+- **contents 项的形状**：`{expression_id, position, locator}`。`locator` 走 definitions 的 `locator` 组字段（页码、时间码、文件路径、章节），整轨收录允许 `{}`。
+- **反查收录**：`GET /api/catalog/entities/{id}/occurrences`。expression 返回自身，`content_unit` / `work` 返回其表达。
+- **批量取表达**：发行页要一次取多条表达，用 `POST /api/catalog/expressions/details`，请求体 `{ids:[…]}`，上限 500。
+
+表达之间的关系：
+
+| 语义 | 关系码 |
+| --- | --- |
+| 译本 | `translation_of` |
+| 修订 | `revision_of` |
+| 翻唱 | `cover_of` |
+| 别版 | `alternate_take_of` |
+
+以上均为 expression → expression，声明无环。
+
+- **版次差异不要改共用表达**：同一表达在不同发行的时长、署名差异属于该版次，写在该 Track 自己的 `attributes`，不要改共用 Expression。
 
 ## 6. 写入与审计留痕
 
@@ -171,17 +228,50 @@ group: "api"
 | 修订历史 | `GET /api/catalog/entities/:id/revisions` | 开放（按可见性过滤） |
 | 外部导入 | `GET /api/importer/sources`（可用来源清单）、`POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
 
-- **写入粒度**：一条发行链就是多次 `POST /api/catalog/entities`，按依赖顺序提交，保存每步返回的 id；中途失败时停止后续依赖写入，报告已写入的部分，按已落库的事实继续
-- **证据与修订**：每次写入都带 `edit_note` + `sources`（`kind` 为 `url` / `publication` / `self`，`citation` 必填，带 `url` 时必须是合法 HTTP(S)）；服务端同时写修订行与事件，可用 `GET /api/catalog/entities/:id/revisions` 复核
-- **幂等**：`POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头（进程内存 24 小时，缓存键为「路由 + 用户 + key」，不做载荷哈希）；更新与删除靠 `expected_version`，不要在 409 之后盲目重复创建
-- **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回；`kind` / `work_id` / `release_id` / `medium_id` 不可改
-- **状态流转**：新建缺省 `draft`；**发布**就是 PUT 写 `status=published`，要求至少一条 `translations` 且结构引用的实体已发布；`deleted` / `merged` 走生命周期端点（该端点只做合并与退役，请求体无 `action` 字段）；**已发布条目退回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`（体为 `{expected_version, edit_note, sources}`、不能带 `target_id`，只接受 `published → draft`，其余状态 `400 invalid_status`）
-- **关系码取用**：署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …），角色登场用 `character_in`，作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`，组成用 `includes`；没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`
-- **外部导入**：导入器当前只支持 Bangumi（`source` 去空白、忽略大小写，留空或 `auto` 都归一为 `bangumi`，`preview` 与 `import` 同一套归一化；可选来源以 `GET /api/importer/sources` 为准，清单里只有真有适配器的来源、且不含 `auto`），`entity_type` 取 `work` / `artist` / `organization` / `character`，`link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。载荷**声明了就必须被兑现**：没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`），`has_release=true` 或带了非空 `release` 却没有 `mediums` 报 `invalid_payload: … requires mediums`（无载体发行改走 `append_release_to_work`），`entity_type` 越出上面四个值报 `invalid_entity_type`；`media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。预览与落库同权限、同一预检判据：预览同样按载荷出站抓取，因此也受限流约束
+### 6.1 写入粒度与幂等
+
+- **写入粒度**：一条发行链就是多次 `POST /api/catalog/entities`，按依赖顺序提交，保存每步返回的 id。中途失败时停止后续依赖写入，报告已写入的部分，按已落库的事实继续。
+- **证据与修订**：每次写入都带 `edit_note` + `sources`。`kind` 为 `url` / `publication` / `self`，`citation` 必填，带 `url` 时必须是合法 HTTP(S)。服务端同时写修订行与事件，可用 `GET /api/catalog/entities/:id/revisions` 复核。
+- **幂等**：`POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头，进程内存 24 小时，缓存键为「路由 + 用户 + key」，不做载荷哈希。
+- 更新与删除靠 `expected_version`，不要在 409 之后盲目重复创建。
+- **PUT 是整实体替换**：先 `GET` 拿全量，只改要改的字段，其余原样带回。`kind` / `work_id` / `release_id` / `medium_id` 不可改。
+
+### 6.2 状态流转
+
+- 新建缺省 `draft`。
+- **发布**就是 PUT 写 `status=published`，要求至少一条 `translations` 且结构引用的实体已发布。
+- `deleted` / `merged` 走生命周期端点。该端点只做合并与退役，请求体无 `action` 字段。
+- **已发布条目退回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`。请求体为 `{expected_version, edit_note, sources}`，不能带 `target_id`，只接受 `published → draft`，其余状态 `400 invalid_status`。
+
+### 6.3 关系码取用
+
+- 署名类关系是 `*_by` 系列（`created_by` / `composed_by` / `performed_by` / `directed_by` / `voiced_by` / `photographed_by` …）。
+- 角色登场用 `character_in`。
+- 作品之间的派生用 `adaptation_of` / `sequel_of` / `spin_off_of` / `soundtrack_of`。
+- 组成用 `includes`。
+- 没有贴切码时用通用兜底 `credit_for`，把职位原文写进 `credit_role`。
+
+### 6.4 外部导入
+
+导入器当前只支持 Bangumi：
+
+- `source` 去空白、忽略大小写，留空或 `auto` 都归一为 `bangumi`；`preview` 与 `import` 同一套归一化。
+- 可选来源以 `GET /api/importer/sources` 为准。清单里只有真有适配器的来源，且不含 `auto`。
+- `entity_type` 取 `work` / `artist` / `organization` / `character`；越出这四个值报 `invalid_entity_type`。
+- `link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。
+
+载荷声明了就必须被兑现：
+
+- 没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`）。
+- `has_release=true` 或带了非空 `release` 却没有 `mediums`，报 `invalid_payload: … requires mediums`。无载体发行改走 `append_release_to_work`。
+- `media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。
+- 预览与落库同权限、同一预检判据。预览同样按载荷出站抓取，因此也受限流约束。
 
 ## 7. 可照抄示例
 
-前置：`METAFUSION_API_BASE` 形如 `http://127.0.0.1:8080/api`；`METAFUSION_TOKEN` 是会话令牌或 OAuth 访问令牌。示例把每层都直接建成 `published`，因此令牌需要 `catalog.entity.edit`（或 `catalog.lifecycle.manage`）；只有普通权限时先建 `draft`，复核后再 `PUT` 发布。
+前置：`METAFUSION_API_BASE` 形如 `http://127.0.0.1:8080/api`；`METAFUSION_TOKEN` 是会话令牌或 OAuth 访问令牌。
+
+示例把每层都直接建成 `published`，因此令牌需要 `catalog.entity.edit`（或 `catalog.lifecycle.manage`）；只有普通权限时先建 `draft`，复核后再 `PUT` 发布。
 
 三个示例做同一件事：检索查重 → 建 Work → 建 Expression → 建 Release / Medium / Track → 建关系 → 回读校验。
 
@@ -457,7 +547,9 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 | `409 version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
 | `429 rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避；命中限流的路由每个响应都带 `X-RateLimit-Limit` / `Remaining` / `Reset`，可据此提前节流 |
 
-遇到表里没有的错误：先用最小载荷复现一次，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`；仍无法解释就停止写入，把「错误码 + 请求摘要 + 目标实体」作为实现缺口上报，不要用近似数据填充，也不要绕过接口改库。
+::: warning 注意：表里没有的错误
+先用最小载荷复现一次，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`。仍无法解释就停止写入，把「错误码 + 请求摘要 + 目标实体」作为实现缺口上报，不要用近似数据填充，也不要绕过接口改库。
+:::
 
 ## 9. 相关文档
 

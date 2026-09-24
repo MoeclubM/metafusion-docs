@@ -8,8 +8,8 @@ group: "api"
 # 检索
 
 检索与浏览是**同一个端点**：`GET /api/catalog/entities` 的 `q` 参数。
-没有独立的 `/api/search`（也没有 `{ works, artists, releases, total }` 这种分组响应），
-返回值始终是统一的 `{ items, total }`。
+
+没有独立的 `/api/search`（也没有 `{ works, artists, releases, total }` 这种分组响应），返回值始终是统一的 `{ items, total }`。
 
 ## 匹配口径
 
@@ -20,9 +20,12 @@ title ILIKE '%<q>%' OR (document->'translations')::text ILIKE '%<q>%'
 ```
 
 - 大小写不敏感的子串匹配（不是分词检索）：`攻壳` 能命中 `攻壳机动队`
-- 标题列上另有一份 `to_tsvector('simple', title)` 的 GIN 索引，但 `ILIKE '%…%'` 这种前后都带通配的匹配用不上它；
-  译文侧更是把整段 JSON 转文本匹配，数据量大时是顺序扫描
-- 因此「按语言精确分词、按相关度排序的全文检索」当前**尚未实现**，`q` 保留的是「能搜到」的降级语义
+- 标题列上另有一份 `to_tsvector('simple', title)` 的 GIN 索引，但 `ILIKE '%…%'` 这种前后都带通配的匹配用不上它
+- 译文侧把整段 JSON 转文本匹配，数据量大时是顺序扫描
+
+::: warning 当前没有按相关度排序的全文检索
+「按语言精确分词、按相关度排序的全文检索」当前**尚未实现**，`q` 保留的是「能搜到」的降级语义。
+:::
 
 ## 接口
 
@@ -74,12 +77,12 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
 
 ## 搜索引擎现状
 
-检索当前**全部由 PostgreSQL 承担**，不需要额外部署搜索引擎：
+检索当前**全部由 PostgreSQL 承担**，不需要额外部署搜索引擎。
 
-- 标题走 `to_tsvector('simple', title)` 的 GIN 索引，属性走 `document` 的 JSONB 路径索引；
-  标签、动态类型各有函数索引支撑
-- OpenSearch 2.x **已在编排里**（`--profile search`），作为数据量上到亿级时的倒排与多语言分词层预留，
-  **尚未接线**：开启它不会改变任何检索行为
+- 标题走 `to_tsvector('simple', title)` 的 GIN 索引，属性走 `document` 的 JSONB 路径索引
+- 标签、动态类型各有函数索引支撑
+
+OpenSearch 2.x **已在编排里**（`--profile search`），作为数据量上到亿级时的倒排与多语言分词层预留，**尚未接线**：开启它不会改变任何检索行为。
 
 ## 与前端联动
 
@@ -90,4 +93,5 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
 ## SEO
 
 - 元数据页 SSR 可被爬虫收录
-- 媒体二进制按绑定实体可见性控制；公开实体绑定的文件可匿名读取。`robots.txt` 仅控制抓取索引，不承担访问权限判定。
+- 媒体二进制按绑定实体可见性控制；公开实体绑定的文件可匿名读取
+- `robots.txt` 仅控制抓取索引，不承担访问权限判定

@@ -7,25 +7,25 @@ group: "guide"
 
 # 资源上传与下载
 
-MetaFusion 只做**受控分发**：上传原始文件，下载返回同一份原始文件。
+MetaFusion 只做受控分发：上传原始文件，下载返回同一份原始文件。
 试听、缩略图、波形图等预览需求由客户端在拿到原档后自行处理。
-
----
 
 ## 1. 上传
 
 上传统一从 `POST /api/storage/upload/initiate` 开始（客户端本地算 sha256，先做秒传探测），
 服务端按对象存储是否可用返回不同的上传地址。
-现行文件路径只有 `/api/storage/*`；`/api/archive/*`、`/api/playback/*`、`/api/media/*` 按实例响应为准（当前部署返回 404 属正常，换回本页的 `/api/storage/*` 路径重试）。
+
+::: warning 注意
+现行文件路径只有 `/api/storage/*`；`/api/archive/*`、`/api/playback/*`、`/api/media/*` 按实例响应为准（当前部署返回 404 属正常）。调用失败时换回本页的 `/api/storage/*` 路径重试。
+:::
 
 | 方式 | 端点 | 适用 |
 | --- | --- | --- |
 | 分片预签名直传 | `POST /api/storage/upload/initiate` → 逐片 `PUT` → `POST /api/storage/upload/complete` | 对象存储经反代对外可达时；大文件并行上传、可断点续传 |
 | 服务端流式上传 | `PUT /api/storage/upload/stream/{asset_id}`（用 initiate 返回的 `direct_upload_url`） | 本地对象模式（未配置对象存储端点），或预签名地址对浏览器不可达时的回退；边收边算 sha256 并与声明比对 |
 
-- **权限**：上传与绑定（`initiate` / `complete` / `upload/stream` / `bind`）需要登录**且**持有 `storage.asset.upload`；
-  缺码是 `403 forbidden`，未登录是 `401 authentication_required`。`member` 组默认持有该码（默认「登录即可上传」），
-  站点要限制上传时从该组移除；解绑不需要该码（只能删自己的绑定）。
+- **权限**：上传与绑定（`initiate` / `complete` / `upload/stream` / `bind`）需要登录且持有 `storage.asset.upload`；缺码是 `403 forbidden`，未登录是 `401 authentication_required`。
+- `member` 组默认持有该码（默认「登录即可上传」），站点要限制上传时从该组移除；解绑不需要该码（只能删自己的绑定）。
 - **秒传**：上传前本地算 sha256，平台已有同一份二进制即直接复用（内容寻址，不重复占空间）。
 - **绑定**：`POST /api/storage/bind` 用 `binding_role` 说明用途（`master_archive` / `track_audio` / `disc_image` / `scans` …）。
 - **暂存与去重**：对象键由 sha256 派生（`objects/<前两位>/<sha256>/<文件名>`），同一内容恒定映射同一键。
@@ -33,7 +33,7 @@ MetaFusion 只做**受控分发**：上传原始文件，下载返回同一份�
 ## 2. 下载与访问控制
 
 - `GET /api/storage/download/{asset_id}`：S3 模式下返回带时限的预签名地址；本地对象模式由服务端流式下发。
-- 可见性只有一条口径：**上传者本人或持 `storage.asset.moderate` 的审核者直通，其余人只要任一绑定目标实体可见即可读**（不可读一律 `404`）。
+- **可见性只有一条口径**：上传者本人或持 `storage.asset.moderate` 的审核者直通，其余人只要任一绑定目标实体可见即可读（不可读一律 `404`）。
 - 下载、元数据读取与哈希校验共用同一判定，不会出现「能下载不能查」的差异。
 
 ## 3. 职责边界
@@ -47,4 +47,4 @@ MetaFusion 只做**受控分发**：上传原始文件，下载返回同一份�
 再加一层转码会把"分发"变成"再编码"：多一套分辨率/码率/格式的组合、多一份存储与 CPU 成本，
 而需要的场景（试听、预览）完全可以由客户端在拿到原档后自行处理。
 
-因此存储服务的职责收敛为三件事：**收文件、认内容（哈希）、按权限给出去**。
+因此存储服务的职责收敛为三件事：收文件、认内容（哈希）、按权限给出去。

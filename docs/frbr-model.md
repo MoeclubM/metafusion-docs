@@ -7,9 +7,9 @@ group: "model"
 
 # IFLA LRM 增强版实体模型
 
-MetaFusion 借用 IFLA LRM 的分层思想组织元数据，但落地形态是一套**固定八类实体骨架 +
-服务端动态定义**，没有硬编码的 `media_type` 分类树。可以编辑的类型、字段、词表、关系与展示模板全部来自
-`GET /api/catalog/definitions`。
+MetaFusion 借用 IFLA LRM 的分层思想组织元数据，但落地形态是一套**固定八类实体骨架 + 服务端动态定义**，没有硬编码的 `media_type` 分类树。
+
+可以编辑的类型、字段、词表、关系与展示模板全部来自 `GET /api/catalog/definitions`。
 
 ## LRM 概念到实现的映射
 
@@ -46,12 +46,21 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 | `original_language` | 原语言，用语言标签（如 `ja` / `zh-CN`） |
 | `translations` | 按 locale 分组的**对象**：每个语种含 `title` / `summary` / `aliases` |
 | `types` | 动态业务类型码，来自 definitions 的 `types` |
-| `attributes` | 动态属性。可写键 = 实体 `types` 所声明类型的字段并集，未声明类型时只能为空；键必须在 definitions 的 `fields` 里声明（如 work 的 `tags`、release 的 `isbn`；`cover_aspect` 这类比例值不是字段，比例只是展示建议）。`agent` 的四个业务类型都没有属性字段 |
+| `attributes` | 动态属性；可写键与必填由 definitions 决定，规则见下文 |
 | `external_ids` | 外部权威库标识；键必须已在 `external_databases` 预设 |
 | `pictures` | 图片引用：`url` + `caption`（多语言）+ `taken_at` + `source` |
 | `redirect_id` | 合并后的跟随目标（只用 `/resolve` 消费，不直接写） |
 
-结构字段只在对应层级有意义，写入后 **不可改归属**（`400 immutable_scope`）：
+`attributes` 的可写键规则：
+
+- 可写键 = 实体 `types` 所声明类型的字段并集；未声明类型时只能为空。
+- 键必须在 definitions 的 `fields` 里声明，如 work 的 `tags`、release 的 `isbn`。
+- `cover_aspect` 这类比例值不是字段，比例只是展示建议。
+- `agent` 的四个业务类型都没有属性字段。
+
+## 结构字段
+
+结构字段只在对应层级有意义，写入后**不可改归属**（`400 immutable_scope`）：
 
 | 字段 | 只用在 | 说明 |
 |---|---|---|
@@ -64,10 +73,9 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 | `contents[]` | track | `{ expression_id, position, locator, attributes }`：本位置收录的表达与定位 |
 | `subjects[]` | release | `{ work_id, role, position, attributes }`：本发行声明收录的作品，`role` 取 `primary` / `compilation` / `supplement` |
 
-发行版没有 `work_id`：它只能经 `subjects` 声明收录了哪些作品；`contents` 只对 `track` 有意义，`subjects` 只对 `release` 有意义。
+发行版没有 `work_id`：它只能经 `subjects` 声明收录了哪些作品。`contents` 只对 `track` 有意义，`subjects` 只对 `release` 有意义。
 
-`locator` / `inclusion_attributes` / `subject_attributes` 的子字段由 definitions 的组字段与
-`schemes` 场景声明，可后台增删；写入时按拥有者的 kind / types 匹配场景，无匹配则回退全局组。
+`locator` / `inclusion_attributes` / `subject_attributes` 的子字段由 definitions 的组字段与 `schemes` 场景声明，可后台增删。写入时按拥有者的 kind / types 匹配场景，无匹配则回退全局组。
 
 ## 状态与修订
 
@@ -79,27 +87,26 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 | `deleted` | 已停用 |
 | `merged` | 已合并，`redirect_id` 指向保留实体 |
 
-每次写入都会落修订行（操作者、`edit_note`、`sources`、快照），用
-`GET /api/catalog/entities/:id/revisions` 读取；合并与退役只能经
-`POST /api/catalog/entities/:id/lifecycle`，`published → draft` 的下架经
-`POST /api/catalog/entities/:id/unpublish`。详见 [新建与编辑](/api-edit)。
+每次写入都会落修订行（操作者、`edit_note`、`sources`、快照），用 `GET /api/catalog/entities/:id/revisions` 读取。
+
+合并与退役只能经 `POST /api/catalog/entities/:id/lifecycle`，`published → draft` 的下架经 `POST /api/catalog/entities/:id/unpublish`。详见 [新建与编辑](/api-edit)。
 
 ## 表达复用：为什么不需要「典范条目」实体
 
-同一份录音 / 同一条正文被多个发行版收录时，全库只建 **1 个 `expression`**，
-各发行版的 `track.contents[].expression_id` 指向它——这就是「Appears on Releases」反查的原理，
-数据位置是 `catalog.track_contents`。约束有两条：
+同一份录音 / 同一条正文被多个发行版收录时，全库只建 **1 个 `expression`**，各发行版的 `track.contents[].expression_id` 指向它。
 
-- 被收录表达的 `work` 必须出现在该发行版 `subjects` 里（否则 `undeclared_release_subject` 校验失败）
-- 收录位置（页码、时间码、路径）写在 `locator`，不复用到别处
+这就是「Appears on Releases」反查的原理，数据位置是 `catalog.track_contents`。约束有两条：
 
-专辑曲序、篇目顺序等「概念编排」用有序的 `includes` 关系表达；**真正的版次顺序以 Medium 与
-Track 收录为准**，两者不要混用。
+- 被收录表达的 `work` 必须出现在该发行版 `subjects` 里，否则 `undeclared_release_subject` 校验失败。
+- 收录位置（页码、时间码、路径）写在 `locator`，不复用到别处。
+
+::: warning 注意：概念编排与实际版次顺序不要混用
+专辑曲序、篇目顺序等「概念编排」用有序的 `includes` 关系表达；真正的版次顺序以 Medium 与 Track 收录为准。
+:::
 
 ## 关系模型
 
-关系是实体之间的一等对象（`catalog.relations`），类型、端点层级、基数、对称与无环声明全部由
-definitions 驱动。默认种子的分组：
+关系是实体之间的一等对象（`catalog.relations`），类型、端点层级、基数、对称与无环声明全部由 definitions 驱动。默认种子的分组：
 
 | 分组 | 关系码 |
 |---|---|
@@ -107,18 +114,17 @@ definitions 驱动。默认种子的分组：
 | creative（内容关系） | `adaptation_of`、`sequel_of`、`spin_off_of`、`soundtrack_of`、`translation_of`、`revision_of`、`cover_of`、`alternate_take_of`、`pressing_of` |
 | membership（组成与成员） | `includes`、`member_of`、`bonus_included_in`、`store_bonus_for` |
 
-- 声明 `acyclic` 的关系（`adaptation_of` / `sequel_of` / `includes` / `member_of` 等）会做环路检测，
-  形成闭环返回 `relation_cycle`
-- 端点层级与业务类型受关系的 `source_kinds` / `target_kinds` / `source_types` / `target_types` 白名单约束
-- 外部来源的职位没有贴切的码时用 `credit_for`，职位原文写进 `attributes.credit_role`，不要虚构新码
-- 同一角色跨作品用多条 `character_in`；番位写 `character_rank` 词表项
+- 声明 `acyclic` 的关系（`adaptation_of` / `sequel_of` / `includes` / `member_of` 等）会做环路检测，形成闭环返回 `relation_cycle`。
+- 端点层级与业务类型受关系的 `source_kinds` / `target_kinds` / `source_types` / `target_types` 白名单约束。
+- 外部来源的职位没有贴切的码时用 `credit_for`，职位原文写进 `attributes.credit_role`，不要虚构新码。
+- 同一角色跨作品用多条 `character_in`；番位写 `character_rank` 词表项。
 
 ## 明确不做的事
 
-- **不用 `media_type` 树状分类**：作品形态用标签、业务类型、发行规格与关系图谱表达
-- **不建 `Artist` / `Franchise` 实体**：分别用 `agent` 与 `collection` + 关系表达
-- **不做转码**：存储只收原始文件、按权限分发，不生成预览流（见 [资源上传与下载](/upload-download)）
-- **不把能力写死在代码里**：新增类型、字段、词表或关系都走 definitions 的草稿 → 影响面校验 → 发布
+- **不用 `media_type` 树状分类**：作品形态用标签、业务类型、发行规格与关系图谱表达。
+- **不建 `Artist` / `Franchise` 实体**：分别用 `agent` 与 `collection` + 关系表达。
+- **不做转码**：存储只收原始文件、按权限分发，不生成预览流（见 [资源上传与下载](/upload-download)）。
+- **不把能力写死在代码里**：新增类型、字段、词表或关系都走 definitions 的草稿 → 影响面校验 → 发布。
 
 ## 相关页面
 

@@ -8,13 +8,16 @@ group: "api"
 # AI Agent 自动化 API 与工具规范
 
 Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。
-主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点——一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
+
+::: warning 注意：没有原子提交
+主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
+:::
 
 接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录](/catalog)；逐步操作流程见 [AI Agent 接入与自动化编目协作指南](/agent-integration)。
 
 ## 1. 运行时事实来源
 
-字段码、词表项、关系码与结构归属**只从服务端取**，不要固化在 Agent 里：
+字段码、词表项、关系码与结构归属只从服务端取，不要固化在 Agent 里：
 
 | 事实 | 来源 |
 | --- | --- |
@@ -129,21 +132,40 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 ## 3. 认证与权限码
 
-身份来自账号服务（`metafusion-auth`）：**会话 / OAuth 的 RS256 令牌**用请求头 `Authorization: Bearer <token>` 或 Cookie `mf_session`，目录侧只验签；
-或者**个人访问令牌（PAT，明文前缀 `mfp_`）**——目录侧把它送给账号服务的内省端点判定，适用于长期运行的 Agent 与 CI。
+身份来自账号服务（`metafusion-auth`），支持两种凭据：
 
-- **长期接入用 PAT，不要共用某个人的会话令牌**：在设置页自助创建（`POST /api/auth/tokens`，需登录态，PAT 本身不能再创建 PAT），
-  明文只在创建响应里出现一次；`scopes` 填**权限码**（不是 `read` / `write`），且必须是账号自己当前持有的码，
-  超出本人权限的创建会被拒绝；
-- PAT 的**有效权限 = 账号现时权限 ∩ 令牌 scopes**：scopes 为空数组即"只有身份、零权限"，
-  任何权限码闸门都返回 `403`（**不会**按角色兜底）；权限被收回后令牌自动变窄；
-- 吊销、到期与权限收回在目录侧**最长 60 秒后生效**（下游缓存 60 秒内省结果），不要按"立即失效"写重试逻辑；
-- 错误只有两个稳定机器码：无效 / 已吊销 / 已过期 / 账号被封禁 → `401 invalid_token`；账号服务不可达 → `503 auth_unavailable`（重试，不要换凭据）。
-  形态非法的 `mfp_` 令牌在**读端点**也返回 401，与"会话令牌坏了按匿名继续"不同；
-- **PAT 不绕过限流**：目录侧的路由级限流按 IP + 路由、与凭据无关，命中限流的路由每个响应都带
-  `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`，长跑 Agent 应据此自己节流，超限仍是 `429 rate_limited` + `Retry-After`；
-- **没有 `X-API-Key` 认证方式**；scope 也不是 `catalog:write` 这类读写词表。完整口径（限额 10 张、`expires_in_days`、
-  吊销窗口、安全建议）见 [认证与凭证](/api-auth)。
+- **会话 / OAuth 的 RS256 令牌**：请求头 `Authorization: Bearer <token>` 或 Cookie `mf_session`，目录侧只验签。
+- **个人访问令牌（PAT）**：明文前缀 `mfp_`。目录侧把它送给账号服务的内省端点判定，适用于长期运行的 Agent 与 CI。
+
+### PAT 创建与使用
+
+- 长期接入用 PAT，不要共用某个人的会话令牌。
+- 在设置页自助创建（`POST /api/auth/tokens`，需登录态，PAT 本身不能再创建 PAT）。
+- 明文只在创建响应里出现一次。
+- `scopes` 填权限码（不是 `read` / `write`），且必须是账号自己当前持有的码；超出本人权限的创建会被拒绝。
+
+### PAT 权限
+
+- PAT 的有效权限 = 账号现时权限 ∩ 令牌 scopes。
+- scopes 为空数组即"只有身份、零权限"：任何权限码闸门都返回 `403`，不会按角色兜底。
+- 权限被收回后令牌自动变窄。
+
+::: warning 注意：吊销不是立即生效
+吊销、到期与权限收回在目录侧最长 60 秒后生效（下游缓存 60 秒内省结果）。不要按"立即失效"写重试逻辑。
+:::
+
+### PAT 错误码
+
+- 稳定机器码只有两个：无效 / 已吊销 / 已过期 / 账号被封禁 → `401 invalid_token`；账号服务不可达 → `503 auth_unavailable`（重试，不要换凭据）。
+- 形态非法的 `mfp_` 令牌在读端点也返回 401，与"会话令牌坏了按匿名继续"不同。
+
+### PAT 与限流
+
+- PAT 不绕过限流。目录侧的路由级限流按 IP + 路由、与凭据无关。
+- 命中限流的路由每个响应都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`，长跑 Agent 应据此自己节流。
+- 超限仍是 `429 rate_limited` + `Retry-After`。
+
+没有 `X-API-Key` 认证方式；scope 也不是 `catalog:write` 这类读写词表。完整口径（限额 10 张、`expires_in_days`、吊销窗口、安全建议）见 [认证与凭证](/api-auth)。
 
 | 权限码 | 允许的操作 | 闸门位置 |
 | --- | --- | --- |
@@ -154,7 +176,10 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | `catalog.import.submit` | 外部导入的来源清单、预览与落库 | 硬闸：`GET /api/importer/sources`、`POST /api/importer/preview`、`POST /api/importer/import` |
 | `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
 
-权限码来自令牌的 `permissions`：带 `*` 即全部目录权限；令牌完全没有 `permissions` 字段时（老令牌或未按权限组配置的实例）才按角色兜底——`admin` 放行全部目录码，`editor` 只放行 `catalog.entity.edit`，其余不放行。
+权限码来自令牌的 `permissions`：带 `*` 即全部目录权限。
+
+令牌完全没有 `permissions` 字段时（老令牌或未按权限组配置的实例）才按角色兜底：`admin` 放行全部目录码，`editor` 只放行 `catalog.entity.edit`，其余不放行。
+
 **PAT 身份不参与这条兜底**：它的权限就是内省返回的那一列，空着就是没有权限（即便账号是 admin）。
 
 ## 4. 写入契约
@@ -171,11 +196,13 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | 不可变归属 | `kind` / `work_id` / `release_id` / `medium_id` 写入后不可改（`400 immutable_scope`）；换归属要重建实体 |
 | 结构归属 | `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`，否则 `400 parent_required`；`parent_id` 只能指向同域父节点 |
 | 收录声明 | 被 Track 收录的 Expression 所属 Work，必须在该 Release 的 `subjects` 里声明（`role` 取 `primary` / `compilation` / `supplement`），否则 `400 undeclared_release_subject` |
-| 状态 | 缺省 `draft`，另有 `pending_review` / `published`；`deleted` / `merged` 只能经生命周期端点写入（`400 use_lifecycle_endpoint`）。生命周期端点只做合并与退役，请求体 `{target_id?, expected_version, edit_note, sources}` **没有 `action` 字段**；**已发布条目退回 `draft` 走下架端点** `POST /api/catalog/entities/:id/unpublish`（体为 `{expected_version, edit_note, sources}`，**不能带 `target_id`**；只接受 `published → draft`，其余状态 `400 invalid_status`），PUT 提交降级仍返回 `use_lifecycle_endpoint` |
+| 状态 | 缺省 `draft`，另有 `pending_review` / `published`；`deleted` / `merged` 只能经生命周期端点写入（`400 use_lifecycle_endpoint`），详见 4.3 |
 | 发布 | `status=published` 要求至少一条 `translations`（`400 translation_required`），且所有结构引用的实体对匿名可见，即本身已发布 |
 | 证据 | `edit_note` 非空 + `sources` 至少 1 项，否则 `400 evidence_required` |
 
-`translations` 是按 locale 分组的对象（每个语种含 `title` / `summary` / `aliases`），不是数组；`pictures` 的每一项都要带 `source`，其证据规则与 `sources` 相同。
+`translations` 是按 locale 分组的对象，不是数组；每个语种含 `title` / `summary` / `aliases`。
+
+`pictures` 的每一项都要带 `source`，其证据规则与 `sources` 相同。
 
 ### 4.2 关系写入
 
@@ -194,11 +221,20 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 }
 ```
 
-服务端校验：关系码必须存在且 enabled、两端 kind 在 `source_kinds` / `target_kinds` 内、两端业务类型在 `source_types` / `target_types` 白名单内、属性键属于该关系声明的 `fields`、不重复（同端点同类型同属性同 position）、不超基数，声明 `acyclic` 的关系会做环路检测。同一条边用不同属性区分（如不同 `credit_role` / `language`）是合法的。
+服务端校验：
+
+- 关系码必须存在且 enabled。
+- 两端 kind 在 `source_kinds` / `target_kinds` 内；两端业务类型在 `source_types` / `target_types` 白名单内。
+- 属性键属于该关系声明的 `fields`。
+- 不重复（同端点同类型同属性同 position）、不超基数。
+- 声明 `acyclic` 的关系会做环路检测。
+- 同一条边用不同属性区分（如不同 `credit_role` / `language`）是合法的。
 
 ### 4.3 生命周期：合并、退役与下架
 
-合并与退役走管理端点，带 `target_id` 是合并、不带是退役。生命周期写入同样要证据（`edit_note` 非空 + `sources` 至少一条，否则 `400 evidence_required`）：
+合并与退役走管理端点：带 `target_id` 是合并、不带是退役。请求体没有 `action` 字段。
+
+生命周期写入同样要证据：`edit_note` 非空 + `sources` 至少一条，否则 `400 evidence_required`。
 
 ```http
 POST /api/catalog/entities/:id/lifecycle
@@ -206,9 +242,11 @@ POST /api/catalog/entities/:id/lifecycle
   "sources": [{ "kind": "url", "citation": "官方条目页", "url": "https://example.com/entry" }] }
 ```
 
-合并要求目标同 kind、同归属（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id` 都相同）且已发布，否则 `400 invalid_merge_target`；源实体写入 `redirect_id`，之后用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体。改引用与修订记录在同一事务内完成。
+合并要求目标同 kind、同归属（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id` 都相同）且已发布，否则 `400 invalid_merge_target`。
 
-下架（`published → draft`）是状态机里**唯一**的降级入口，权限、证据与乐观锁口径都与上面一致：
+源实体写入 `redirect_id`，之后用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体。改引用与修订记录在同一事务内完成。
+
+下架（`published → draft`）是状态机里唯一的降级入口，权限、证据与乐观锁口径都与上面一致：
 
 ```http
 POST /api/catalog/entities/:id/unpublish
@@ -216,13 +254,45 @@ POST /api/catalog/entities/:id/unpublish
   "sources": [{ "kind": "self", "citation": "核对官方条目后确认内容有误" }] }
 ```
 
-请求体没有 `target_id`（带上 → `400 invalid_payload`）；只接受 `published → draft`，`draft` / `pending_review` / `deleted` / `merged` 都是 `400 invalid_status`；成功返回与 Save 同形状的完整实体，同一事务写一条修订行与 `entity.unpublished` 事件（下架不计入贡献统计的 `audit_actions`，那里只数删除与合并）。
+请求体没有 `target_id`，带上返回 `400 invalid_payload`。只接受 `published → draft`；`draft` / `pending_review` / `deleted` / `merged` 都是 `400 invalid_status`。
+
+成功返回与 Save 同形状的完整实体，同一事务写一条修订行与 `entity.unpublished` 事件（下架不计入贡献统计的 `audit_actions`，那里只数删除与合并）。
 
 ## 5. 幂等、并发与限流
 
-- **Idempotency-Key**：只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认这个请求头。缓存键是「路由 + 用户 + key」，命中直接返回首创结果、不建重复数据；存活 24 小时，存在**进程内存**里，重启即失效，也不做载荷哈希——同一个 key 换了载荷不会报冲突，会照首发结果返回。并发同 key 不保证单飞，重试前先回读确认。
-- **更新与删除不用幂等键**，靠 `expected_version`：收到 `409 version_conflict` 就回读实体取最新 version 再重放，不要盲目重复创建。
-- **限流**：`GET /api/catalog/entities` 120/分钟、`GET /api/catalog/tags` 120/分钟、`POST /api/catalog/expressions/details` 120/分钟、`GET /api/catalog/entities/stats` 120/分钟（另需 `catalog.lifecycle.manage`）、`GET /api/catalog/shelves/feed` 60/分钟、`GET /api/users/:id/contributions` 120/分钟、`GET /api/catalog/compare` 10/分钟、`POST /api/importer/preview` 10/分钟（按 IP + 路由、进程内存固定窗口）。写入接口没有路由级限流，但仍受网关按 IP 的约束。命中限流的路由**每个响应**都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数），超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
+### 5.1 幂等键
+
+- 只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头。
+- 缓存键是「路由 + 用户 + key」，命中直接返回首创结果、不建重复数据。
+- 缓存存活 24 小时，存在进程内存里，重启即失效，也不做载荷哈希——同一个 key 换了载荷不会报冲突，会照首发结果返回。
+- 并发同 key 不保证单飞，重试前先回读确认。
+
+### 5.2 乐观锁
+
+更新与删除不用幂等键，靠 `expected_version`。
+
+收到 `409 version_conflict` 就回读实体取最新 version 再重放，不要盲目重复创建。
+
+### 5.3 限流
+
+限流按 IP + 路由、进程内存固定窗口：
+
+| 路由 | 限额 |
+| --- | --- |
+| `GET /api/catalog/entities` | 120/分钟 |
+| `GET /api/catalog/tags` | 120/分钟 |
+| `POST /api/catalog/expressions/details` | 120/分钟 |
+| `GET /api/catalog/entities/stats` | 120/分钟（另需 `catalog.lifecycle.manage`） |
+| `GET /api/catalog/shelves/feed` | 60/分钟 |
+| `GET /api/users/:id/contributions` | 120/分钟 |
+| `GET /api/catalog/compare` | 10/分钟 |
+| `POST /api/importer/preview` | 10/分钟 |
+
+写入接口没有路由级限流，但仍受网关按 IP 的约束。
+
+命中限流的路由**每个响应**都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数）。
+
+超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
 
 ## 6. 错误码与自愈策略
 

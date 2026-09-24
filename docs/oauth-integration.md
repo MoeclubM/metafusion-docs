@@ -7,13 +7,14 @@ group: "api"
 
 # 第三方站点接入 OAuth 授权
 
-MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（发现文档、`id_token`、JWKS），
+MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（发现文档、`id_token`、JWKS）。
 第三方站点用它在自己的站点上实现「用 MetaFusion 账号登录」，不需要接触用户密码。
-本页按**当前实例的实测契约**写：端点、参数、响应字段与错误码可以直接照抄，
+
+本页按当前实例的实测契约写：端点、参数、响应字段与错误码可以直接照抄。
 把示例里的 `https://<your-host>` 换成你自己的实例地址即可。
 
 ::: tip 与本页的关系
-[认证与凭证](/api-auth) 讲实例自身的登录、会话与令牌；本页只讲**第三方接入**这条链路。
+[认证与凭证](/api-auth) 讲实例自身的登录、会话与令牌；本页只讲第三方接入这条链路。
 管理端接口需要权限码 `auth.oauth.manage`（权限中心里的名称是「管理 OAuth 客户端」）。
 :::
 
@@ -29,9 +30,14 @@ MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（�
 | 客户端管理与审计 | `/api/admin/oauth/*`、`POST /api/admin/users/{id}/revoke-oauth-tokens` | 权限码 `auth.oauth.manage` |
 | 用户自查与自助撤回 | `GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}` | 登录即可（只作用于本人） |
 
-`/api/oauth/authorize` 与 `/api/oauth/token` 与登录类接口共用**账号服务**按来源 IP 的固定窗口限流
-（15 次/分钟），超限返回 `429` + `Retry-After: 60` 与 `{"error":"rate_limited"}`；
-**网关**对 `/api/oauth/` 另有 `5 r/s`（`burst 10`）的入口限流。两处都按 `429` + `Retry-After` 退避重试。
+两个入口都有限流：
+
+| 层 | 范围 | 限流 | 超限响应 |
+|---|---|---|---|
+| 账号服务 | `/api/oauth/authorize` 与 `/api/oauth/token`，与登录类接口共用，按来源 IP 固定窗口 | 15 次/分钟 | `429` + `Retry-After: 60` 与 `{"error":"rate_limited"}` |
+| 网关 | `/api/oauth/` 入口 | `5 r/s`（`burst 10`） | `429` + `Retry-After` |
+
+两处都按 `429` + `Retry-After` 退避重试。
 
 ## 1. 发现文档
 
@@ -56,8 +62,11 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | `id_token_signing_alg_values_supported` | `["RS256"]` |
 | `claims_supported` | `["sub", "preferred_username", "email", "role"]` |
 
-根路径的 `/.well-known/openid-configuration`（OIDC 标准入口）与 `/api/.well-known/openid-configuration`
-返回同一份文档；下面的端点地址一律**以 `issuer` 为基准拼接**，不要写死站点根路径。
+根路径的 `/.well-known/openid-configuration`（OIDC 标准入口）与 `/api/.well-known/openid-configuration` 返回同一份文档。
+
+::: warning 端点地址以 `issuer` 为基准拼接
+下面的端点地址一律以 `issuer` 为基准拼接，不要写死站点根路径。
+:::
 
 ## 2. 授权码流程
 
@@ -68,7 +77,7 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `client_id` | 是 | 管理端登记的客户端 id |
-| `redirect_uri` | 是 | 必须与登记的回调白名单**逐字相等** |
+| `redirect_uri` | 是 | 必须与登记的回调白名单逐字相等 |
 | `response_type` | 是 | 只能是 `code` |
 | `scope` | 否 | 空格分隔，取值见下方表格；不传按 `profile` 处理 |
 | `state` | 建议 | 原样带回，第三方用它对齐自己发起的请求 |
@@ -77,18 +86,20 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 
 行为要点：
 
-- **未登录**：`302` 到账号页并带 `return_to=<本次授权请求的原始地址>`，登录后回到同一次授权请求，
-  `state`、PKCE 参数与 `scope` 都不会丢。第三方不需要自己处理这一步。
-- **非 trusted 客户端会先渲染同意页**，展示客户端名称与 `client_id`、回跳地址，以及按收敛结果逐项列出的权限说明；
-  **未核验**（`verified=false`）的第三方应用还会多一行「该应用未通过核验」的提示（核验由管理员在管理面做）。
-  用户点「同意并继续」才继续，点「拒绝」直接回跳。
-- **trusted 客户端**（预置第一方）跳过同意页，直接发码。
-- **同意**：`302` 到 `redirect_uri?code=<code>&state=<state>`（`redirect_uri` 自带 query 时用 `&` 续接，两个值都做 URL 转义）。
-- **拒绝**：`302` 到 `redirect_uri?error=access_denied&state=<state>`，**不带 `code`**。
-- 授权码 **10 分钟有效、单次使用**：成功兑换一次即失效；并发双兑只有一个成功，另一个拿到 `expired_or_used_code`。
+- 未登录：`302` 到账号页并带 `return_to=<本次授权请求的原始地址>`。
+- 登录后回到同一次授权请求：`state`、PKCE 参数与 `scope` 都不会丢，第三方不需要自己处理这一步。
+- 非 trusted 客户端会先渲染同意页：展示客户端名称与 `client_id`、回跳地址，以及按收敛结果逐项列出的权限说明。
+- 用户点「同意并继续」才继续，点「拒绝」直接回跳。
+- 未核验（`verified=false`）的第三方应用还会多一行「该应用未通过核验」的提示。核验由管理员在管理面做。
+- trusted 客户端（预置第一方）跳过同意页，直接发码。
+- 同意：`302` 到 `redirect_uri?code=<code>&state=<state>`。
+- `redirect_uri` 自带 query 时用 `&` 续接，`code` 与 `state` 两个值都做 URL 转义。
+- 拒绝：`302` 到 `redirect_uri?error=access_denied&state=<state>`，不带 `code`。
+- 授权码 10 分钟有效、单次使用：成功兑换一次即失效。
+- 并发双兑只有一个成功，另一个拿到 `expired_or_used_code`。
 
 ::: warning 不要替用户拼接 `consent=allow`
-同意页的两个按钮，就是在**同一次**授权请求上追加 `consent=allow` / `consent=deny`。
+同意页的两个按钮，就是在同一次授权请求上追加 `consent=allow` / `consent=deny`。
 第三方在自己的站点里替用户拼一个带 `consent=allow` 的授权地址，等于绕过同意页，请不要这么做。
 :::
 
@@ -96,13 +107,16 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 
 发放的 scope 只能是交集，第三方无法靠请求参数拿到客户端没被允许的权限：
 
-- 客户端白名单在管理端登记，可选项只有 `openid` / `profile` / `email`；
-- 实测：请求 `openid profile email`、客户端白名单只有 `openid profile` 时，同意页只列两项，
-  换码响应里的 `scope` 也是 `"openid profile"`；
-- 请求里含不受支持的 scope（例如 `phone`）→ `400`，且**不静默丢弃**，响应点明是哪一项：
-  `{"error":"invalid_scope","unsupported_scopes":["phone"],"supported_scopes":["openid","profile","email"]}`；
-- 收敛后一个 scope 都不剩 → `400 {"error":"invalid_scope", ...}`；
-- 换码时会按客户端**当前**白名单再收敛一次：管理员事后收紧白名单，只会让令牌 scope 更少，不会变多。
+- 客户端白名单在管理端登记，可选项只有 `openid` / `profile` / `email`。
+- 实测：请求 `openid profile email`、客户端白名单只有 `openid profile` 时，同意页只列两项，换码响应里的 `scope` 也是 `"openid profile"`。
+- 请求里含不受支持的 scope（例如 `phone`）→ `400`，且不静默丢弃，响应点明是哪一项：
+
+  ```json
+  {"error":"invalid_scope","unsupported_scopes":["phone"],"supported_scopes":["openid","profile","email"]}
+  ```
+
+- 收敛后一个 scope 都不剩 → `400 {"error":"invalid_scope", ...}`。
+- 换码时会按客户端当前白名单再收敛一次：管理员事后收紧白名单，只会让令牌 scope 更少，不会变多。
 
 | scope | 含义 | 同意页上的说明 | 相关声明 |
 |---|---|---|---|
@@ -111,9 +125,8 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | `email` | 读取邮箱 | 账号邮箱地址 | `email` |
 
 ::: tip userinfo 按 scope 裁剪
-`userinfo` 只回**令牌被授予 scope 覆盖**的字段：`openid` 给 `sub` / `id`，`profile` 追加
-`username` / `role`，`email` 追加 `email`。只申请 `openid` 就拿不到邮箱——同意页上说给什么，
-实际就只给什么（2026-09-19 审计 S-10 的修复）。
+`userinfo` 只回令牌被授予 scope 覆盖的字段：`openid` 给 `sub` / `id`，`profile` 追加 `username` / `role`，`email` 追加 `email`。
+只申请 `openid` 就拿不到邮箱——同意页上说给什么，实际就只给什么（2026-09-19 审计 S-10 的修复）。
 :::
 
 ### 2.3 授权请求的错误（直接回 JSON，不跳回回调地址）
@@ -155,10 +168,10 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 ```
 
 ::: danger expires_in 是真实 TTL：900 秒（15 分钟），且没有 refresh_token
-- `expires_in = 900` 就是访问令牌的真实有效期，到期后**必须重新走一次授权流程**；
-- 响应里**没有 `refresh_token`**，也没有刷新端点，这是当前有意的设计——不要按「支持刷新」实现；
-- `id_token` 是 RS256 JWT（`aud` 为该 `client_id`），可用 `jwks_uri` 的公钥本地验签；
-  `id_token_expires_at` 是 Unix 秒，与访问令牌同一有效期。
+- `expires_in = 900` 就是访问令牌的真实有效期，到期后必须重新走一次授权流程。
+- 响应里没有 `refresh_token`，也没有刷新端点。这是当前有意的设计——不要按「支持刷新」实现。
+- `id_token` 是 RS256 JWT（`aud` 为该 `client_id`），可用 `jwks_uri` 的公钥本地验签。
+- `id_token_expires_at` 是 Unix 秒，与访问令牌同一有效期。
 :::
 
 换码失败（`400` + `{"error": ...}`）：
@@ -173,7 +186,7 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | `invalid_scope` | 按当前白名单收敛后没有任何可授 scope |
 | `unsupported_grant_type` | `grant_type` 不是 `authorization_code` |
 
-换码**先校验后标记已用**：`code_verifier` 填错不会作废这个授权码，可以改了再来；
+换码先校验、后标记已用：`code_verifier` 填错不会作废这个授权码，可以改了再来。
 但成功兑换一次后该码立即失效。
 
 ## 4. 读取用户信息：GET /api/oauth/userinfo
@@ -200,27 +213,29 @@ curl -sS "https://<your-host>/api/oauth/userinfo" -H "Authorization: Bearer <acc
 | 401 | `missing_token` | 没带 `Authorization: Bearer` 请求头 |
 | 401 | `invalid_token` | 令牌过期、已被吊销、其客户端已停用，或根本不是本服务签发的令牌 |
 
-失效判定以**服务端的存活令牌记录**为准（不是只看 JWT 能否验签），所以「吊销 / 停用」在这里是即时生效的。
-当前实现也允许实例自身的登录会话令牌调用 `userinfo`（便于排障）：那种令牌不属于任何第三方授权，
-没有 scope 可依，按全字段返回；第三方仍应始终使用授权码换来的 `access_token`。
+失效判定以服务端的存活令牌记录为准（不是只看 JWT 能否验签），所以「吊销 / 停用」在这里是即时生效的。
+
+当前实现也允许实例自身的登录会话令牌调用 `userinfo`（便于排障）：那种令牌不属于任何第三方授权，没有 scope 可依，按全字段返回。
+第三方仍应始终使用授权码换来的 `access_token`。
 
 ## 5. 回调地址白名单规则
 
 登记与授权两处用的是同一套规则：
 
-- 每条都必须是 `http(s)` 绝对地址且带主机——`http://localhost:3000/callback` 这类本地地址可以，但必须整串登记；
-- **不接受通配符**（`*`）、**不接受 URL 片段**（`#...`）、**不接受内嵌凭据**（`https://user:pass@host/...`）；
-- 只做**整串精确匹配**：不做前缀匹配、不做子域匹配，也不做大小写或末尾斜杠的等价处理，端口与 query 同样算差异；
+- 每条都必须是 `http(s)` 绝对地址且带主机。`http://localhost:3000/callback` 这类本地地址可以，但必须整串登记。
+- 不接受通配符（`*`）、不接受 URL 片段（`#...`）、不接受内嵌凭据（`https://user:pass@host/...`）。
+- 只做整串精确匹配：不做前缀匹配、不做子域匹配，也不做大小写或末尾斜杠的等价处理，端口与 query 同样算差异。
 - 授权请求里的 `redirect_uri` 不在白名单 → `400 invalid_redirect_uri`，不会跳转到那个地址。
 
 ## 6. PKCE
 
-用 S256。发现文档里的 `code_challenge_methods_supported` 同时列出 `S256` 与 `plain` 只是兼容：
+用 S256。发现文档里的 `code_challenge_methods_supported` 同时列出 `S256` 与 `plain` 只是兼容。
+
 `plain` 等于把 verifier 明文发出去，不建议使用。
 
-- 生成 `code_verifier`：43–128 字符（RFC 7636 允许的字符集）；
-- 计算 `code_challenge = BASE64URL(SHA256(code_verifier))`，去掉末尾的 `=` 填充；
-- 授权请求带 `code_challenge` + `code_challenge_method=S256`，换码时必须带**同一个** `code_verifier`；
+- 生成 `code_verifier`：43–128 字符（RFC 7636 允许的字符集）。
+- 计算 `code_challenge = BASE64URL(SHA256(code_verifier))`，去掉末尾的 `=` 填充。
+- 授权请求带 `code_challenge` + `code_challenge_method=S256`，换码时必须带同一个 `code_verifier`。
 - 带 `code_challenge` 的码，缺 `code_verifier` 或值不匹配 → `invalid_code_verifier`。
 
 ## 7. 示例一：curl（授权码流程，不做 PKCE）
@@ -367,34 +382,82 @@ with urllib.request.urlopen(userinfo_request) as response:
 
 全部需要权限码 `auth.oauth.manage`（无权限返回 `403`）。
 
-| 方法与路径 | 作用 | 备注 |
-|---|---|---|
-| `GET /api/admin/oauth/clients` | 列出全部客户端 | 响应 `{"items":[...]}`，不含密钥哈希 |
-| `POST /api/admin/oauth/clients` | 创建客户端 | 响应 `{"client":{...},"client_secret":"<一次性明文>"}` |
-| `PUT /api/admin/oauth/clients/{id}` | 部分更新 | 只改传入字段：`name` / `description` / `homepage_url` / `redirect_uris` / `scopes` / `trusted` / `disabled` / `verified` |
-| `DELETE /api/admin/oauth/clients/{id}` | 删除客户端 | 其授权码与令牌随之级联删除并立即作废；预置第一方种子客户端拒绝删除（`seeded_client_immutable`），要停用请用 `disabled=true` |
-| `POST /api/admin/oauth/clients/{id}/rotate-secret` | 轮换密钥 | 同样只返回一次明文；**旧密钥立即失效**，需同步更新对端配置 |
-| `POST /api/admin/oauth/clients/{id}/revoke-tokens` | 吊销该客户端名下未过期的令牌 | 响应 `{"revoked": n}`，同时作废它尚未兑换的授权码 |
-| `POST /api/admin/users/{id}/revoke-oauth-tokens` | 吊销某用户授出的全部第三方令牌 | 只动 OAuth 令牌，不影响该用户自己的登录会话 |
-| `GET /api/admin/oauth/audits?client_id=&limit=` | 读授权审计 | 响应 `{"items":[...]}`；`limit` 默认 100（非正数或大于 500 一律回落成 100）；`client_id` 可选过滤 |
+| 方法与路径 | 作用 |
+|---|---|
+| `GET /api/admin/oauth/clients` | 列出全部客户端 |
+| `POST /api/admin/oauth/clients` | 创建客户端 |
+| `PUT /api/admin/oauth/clients/{id}` | 部分更新 |
+| `DELETE /api/admin/oauth/clients/{id}` | 删除客户端 |
+| `POST /api/admin/oauth/clients/{id}/rotate-secret` | 轮换密钥 |
+| `POST /api/admin/oauth/clients/{id}/revoke-tokens` | 吊销该客户端名下未过期的令牌 |
+| `POST /api/admin/users/{id}/revoke-oauth-tokens` | 吊销某用户授出的全部第三方令牌 |
+| `GET /api/admin/oauth/audits?client_id=&limit=` | 读授权审计 |
 
-要点：
+各接口的响应与副作用：
 
-- 创建请求体：`client_id`（可选，不传由服务端生成 `mfc-` 前缀的 id，形状 `^[a-z][a-z0-9_-]{2,63}$`）、
-  `name`（必填，上限 120 字符）、`redirect_uris`（必填，即回调白名单）、`scopes`（可选，默认全部受支持项）、`trusted`、`disabled`；
-  管理面还可传 `description`、`homepage_url` 与 `verified`。
-- **明文 `client_secret` 只在创建与轮换的响应里出现一次**：库里只存 bcrypt 哈希，之后无法再读，丢了只能重新轮换。
-- 删除客户端**不会**删除审计记录（审计只按 `client_id` 文本关联，不建外键），历史同意与拒绝仍可查。
-- 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、
-  `client_secret_rotated`、`client_deleted`、`tokens_revoked`。
-- **全量客户端视图只有管理面**：`GET /api/admin/oauth/clients`（需 `auth.oauth.manage`，见上表）。此前那条登录即可枚举
-  全部 `client_id`、回调白名单、scope、`trusted` / `disabled` / `verified` 与归属的 `GET /api/oauth/clients` 已**整条移除**
-  （不是加闸门）：现在请求它得到 `404`，客户端元数据没有任何登录可见面。
-- **开发者面只服务归属自己的应用**：`/api/developer/apps*` 的列表与读 / 改 / 轮换 / 删一律按归属判定，
-  管理员在开发者面也**没有**例外——不属于自己的 `client_id` 返回 `404 client_not_found`（不是 `403`，
-  `403` 会泄漏「这个 id 已被占用」）；全部客户端的治理就是上面这张表。
-- **系统应用（平台自有、归属为空）只在这里维护**：开发者面的「我的应用」不列它们、自助接口也不返回；
-  第三方应用的**核验**同样只在管理面做（`PUT /api/admin/oauth/clients/{id}` 传 `verified`），未核验的应用在同意页会多一条提示。
+- `GET /api/admin/oauth/clients`：响应 `{"items":[...]}`，不含密钥哈希。
+- `POST /api/admin/oauth/clients`：响应 `{"client":{...},"client_secret":"<一次性明文>"}`。
+- `PUT /api/admin/oauth/clients/{id}`：只改传入字段：`name` / `description` / `homepage_url` / `redirect_uris` / `scopes` / `trusted` / `disabled` / `verified`。
+- `DELETE /api/admin/oauth/clients/{id}`：其授权码与令牌随之级联删除并立即作废。
+- 预置第一方种子客户端拒绝删除（`seeded_client_immutable`），要停用请用 `disabled=true`。
+- `POST /api/admin/oauth/clients/{id}/rotate-secret`：同样只返回一次明文，旧密钥立即失效，需同步更新对端配置。
+- `POST /api/admin/oauth/clients/{id}/revoke-tokens`：响应 `{"revoked": n}`，同时作废它尚未兑换的授权码。
+- `POST /api/admin/users/{id}/revoke-oauth-tokens`：只动 OAuth 令牌，不影响该用户自己的登录会话。
+- `GET /api/admin/oauth/audits?client_id=&limit=`：响应 `{"items":[...]}`。`limit` 默认 100，非正数或大于 500 一律回落成 100；`client_id` 可选过滤。
+
+创建请求体字段：
+
+- `client_id`：可选，不传由服务端生成 `mfc-` 前缀的 id，形状 `^[a-z][a-z0-9_-]{2,63}$`。
+- `name`：必填，上限 120 字符。
+- `redirect_uris`：必填，即回调白名单。
+- `scopes`：可选，默认全部受支持项。
+- `trusted`、`disabled`。
+- 管理面还可传 `description`、`homepage_url` 与 `verified`。
+
+其他要点：
+
+- 明文 `client_secret` 只在创建与轮换的响应里出现一次。库里只存 bcrypt 哈希，之后无法再读，丢了只能重新轮换。
+- 删除客户端不会删除审计记录：审计只按 `client_id` 文本关联，不建外键，历史同意与拒绝仍可查。
+- 审计动作取值：`consent_allow`、`consent_deny`、`trusted_allow`、`client_create`、`client_update`、`client_secret_rotated`、`client_deleted`、`tokens_revoked`。
+
+客户端元数据的可见面与归属边界：
+
+- 全量客户端视图只有管理面的 `GET /api/admin/oauth/clients`（需 `auth.oauth.manage`，见上表）。
+- 旧的 `GET /api/oauth/clients`（登录即可枚举全部 `client_id`、回调白名单、scope、`trusted` / `disabled` / `verified` 与归属）已整条移除，不是加闸门。
+- 现在请求 `GET /api/oauth/clients` 得到 `404`，客户端元数据没有任何登录可见面。
+- 开发者面只服务归属自己的应用：`/api/developer/apps*` 的列表与读 / 改 / 轮换 / 删一律按归属判定，管理员在开发者面也没有例外。
+- 不属于自己的 `client_id` 返回 `404 client_not_found`，不是 `403`——`403` 会泄漏「这个 id 已被占用」。全部客户端的治理就是上面这张表。
+- 系统应用（平台自有、归属为空）只在管理端维护：开发者面的「我的应用」不列它们，自助接口也不返回。
+- 第三方应用的核验只在管理面做：`PUT /api/admin/oauth/clients/{id}` 传 `verified`。未核验的应用在同意页会多一条提示。
+
+### 9.1 用管理界面办这些事（不必写 curl）
+
+网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`）自助登记并管理自己的应用，按应用归属授权，任何登录账号可用。
+
+- 接口：`GET /api/developer/overview`、`GET|POST /api/developer/apps`、`PUT|DELETE /api/developer/apps/{id}`、`POST /api/developer/apps/{id}/rotate-secret`。
+- 每个账号最多 20 个应用，超限返回 `app_quota_exceeded`。
+- 开发者面只认归属：看不到、也读不到不属于自己的应用（返回 `404 client_not_found`，管理员没有例外），系统应用不在开发者面出现。
+- 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
+
+账号管理台（`/admin/account/`，由 `metafusion-auth` 的 `admin/` 独立构建）有「OAuth 客户端」页签，覆盖上面全部管理动作。
+只有持 `auth.oauth.manage` 的账号能看到该页签，无权限时入口不显示（接口侧仍是 403，两层一致）。
+主站的 `/admin` 只管理元数据目录，OAuth 客户端治理不在那里（见 [平台概览](/overview) 的「管理台按域拆分」）。
+
+| 想做的事 | 界面位置 |
+| --- | --- |
+| 建一个新接入方 | 页签内「新建客户端」 |
+| 拿到接入密钥 | 创建成功后当场弹出的对话框里显示一次性 `client_secret` + 复制按钮；轮换密钥同理 |
+| 换密钥 | 列表行「轮换密钥」→ 确认后弹出新的一次性明文，旧密钥立即失效 |
+| 应急断开某个接入方 | 行内「吊销令牌」（作废该客户端名下未过期令牌与未兑换授权码）或「删除」 |
+| 追查谁在什么时候授过权 | 页签内的审计面板，可按 `client_id` 过滤 |
+
+「新建客户端」表单填写：`client_id`（可留空由服务端生成）、名称、回调白名单（一行一个）、scope（多选）、是否受信。
+
+操作上要记住三点：
+
+1. 一次性明文关掉就取不回：界面不提供“再次查看密钥”入口，列表接口也不返回密钥（库里只有哈希）。丢了只能轮换。
+2. 删除是不可撤销的：界面会二次确认；删除后该客户端的令牌与授权码级联作废，但审计记录仍在（审计按 `client_id` 文本关联）。
+3. 回调白名单是安全边界：界面里一行一个地址，必须与对端实际使用的回调完全一致（见第 5 节的匹配规则），改完记得让对方同步。
 
 ### 9.2 用户自助撤回授权（与上面两条吊销的区别）
 
@@ -407,12 +470,14 @@ DELETE /api/auth/oauth-grants/{client_id}
 ```
 
 `GET` 返回 `items[]`：`client_id`、`name`、`scopes`、`active`、`last_authorized_at`、`expires_at`。
-`active` 为 true 表示当前还有未过期的令牌；**授权过但令牌已过期的应用同样列出**（时间取自同意审计），
-所以这是"我给过哪些授权"的全貌，而不是只有当前生效的那些。
 
-`DELETE` 返回 `{"ok":true,"revoked":N}`：`N` 是被删掉的令牌条数。本来就没有有效令牌时 `N=0`，
-请求仍然成功（幂等）；未知 `client_id` 返回 `404 client_not_found`；未登录返回 `401 authentication_required`。
-撤回后该应用在列表里变成 `active:false`，同意记录保留（用户能看到"曾授权过"）。
+`active` 为 true 表示当前还有未过期的令牌。授权过但令牌已过期的应用同样列出（时间取自同意审计），所以这是“我给过哪些授权”的全貌，而不是只有当前生效的那些。
+
+`DELETE` 返回 `{"ok":true,"revoked":N}`：`N` 是被删掉的令牌条数。
+本来就没有有效令牌时 `N=0`，请求仍然成功（幂等）。
+未知 `client_id` 返回 `404 client_not_found`；未登录返回 `401 authentication_required`。
+
+撤回后该应用在列表里变成 `active:false`，同意记录保留（用户能看到“曾授权过”）。
 
 | | 用户自助（本节） | 管理端按客户端 | 管理端按用户 |
 |---|---|---|---|
@@ -421,49 +486,25 @@ DELETE /api/auth/oauth-grants/{client_id}
 | 范围 | 我一个应用 | 该客户端名下所有用户 | 该用户所有应用 |
 | 典型用途 | 用户收回授权 | 应急断开接入方 | 账号处置 |
 
-### 9.1 用管理界面办这些事（不必写 curl）
-
-> **自助登记入口**：网关已把 `/api/developer/*` 分流到账号服务。登录后在站内「开发者中心」（`/developer`，接口
-> `GET /api/developer/overview`、`GET|POST /api/developer/apps`、`PUT|DELETE /api/developer/apps/{id}`、
-> `POST /api/developer/apps/{id}/rotate-secret`）自助登记并管理自己的应用——按**应用归属**授权，任何登录账号可用，
-> 每个账号最多 20 个应用（超限 `app_quota_exceeded`）。开发者面只认归属：看不到、也读不到不属于自己的应用
-> （返回 `404 client_not_found`，管理员没有例外），系统应用不在开发者面出现。
-> 下面的管理台页签是平台侧治理所有客户端的入口（需 `auth.oauth.manage`），两者写同一张表。
-
-账号管理台（`/admin/account/`，由 `metafusion-auth` 的 `admin/` 独立构建）有「**OAuth 客户端**」页签，覆盖上面全部管理动作；**只有持 `auth.oauth.manage` 的账号能看到该页签**，无权限时入口不显示（接口侧仍是 403，两层一致）。主站的 `/admin` 只管理元数据目录，OAuth 客户端治理不在那里（见 [平台概览](/overview) 的「管理台按域拆分」）。
-
-| 想做的事 | 界面位置 |
-| --- | --- |
-| 建一个新接入方 | 页签内「新建客户端」：填 `client_id`（可留空由服务端生成）、名称、**回调白名单（一行一个）**、scope（多选）、是否受信 |
-| 拿到接入密钥 | 创建成功后**当场弹出的对话框**里显示一次性 `client_secret` + 复制按钮；轮换密钥同理 |
-| 换密钥 | 列表行「轮换密钥」→ 确认后弹出**新的**一次性明文，**旧密钥立即失效** |
-| 应急断开某个接入方 | 行内「吊销令牌」（作废该客户端名下未过期令牌与未兑换授权码）或「删除」 |
-| 追查谁在什么时候授过权 | 页签内的审计面板，可按 `client_id` 过滤 |
-
-操作上要记住三点：
-
-1. **一次性明文关掉就取不回**：界面不提供"再次查看密钥"入口，列表接口也不返回密钥（库里只有哈希）。丢了只能轮换。
-2. **删除是不可撤销的**：界面会二次确认；删除后该客户端的令牌与授权码级联作废，但**审计记录仍在**（审计按 `client_id` 文本关联）。
-3. **回调白名单是安全边界**：界面里一行一个地址，必须与对端实际使用的回调完全一致（见第 5 节的匹配规则），改完记得让对方同步。
-
 ## 10. 已知限制
 
 下面都是当前实现的现状，接入前请按它们设计：
 
-- **没有 `refresh_token`**：访问令牌 15 分钟到期后只能重新走完整授权流程。想要更长的登录态，
-  要么让本地会话短于 15 分钟并接受重新授权，要么由下游自己维护会话（授权只用于首次身份确认）。
+- **没有 `refresh_token`**：访问令牌 15 分钟到期后只能重新走完整授权流程。
+  想要更长的登录态，要么让本地会话短于 15 分钟并接受重新授权，要么由下游自己维护会话（授权只用于首次身份确认）。
 - **同意不记忆**：同一用户对同一非 trusted 客户端的每次授权都会重新渲染同意页，没有「已授权免再次确认」。
-- **终端用户可自查与自助撤回**（`GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2）；
-  仍**没有** introspection 式的"撤销所有下游令牌"能力，撤回只影响本服务持有的第三方令牌。
+- **没有 introspection 式的批量撤销**：终端用户可自查与自助撤回（`GET /api/auth/oauth-grants`、`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2），
+  但撤回只影响本服务持有的第三方令牌，没有「撤销所有下游令牌」的能力。
 - **撤销口径**：第三方撤销走终端用户自助撤回（`DELETE /api/auth/oauth-grants/{client_id}`，见 §9.2），
   没有 RFC 7009 的 `POST /api/oauth/revoke`，也没有 introspection 接口。
-  下游若用 JWKS 本地验签（无状态 JWT），撤销后只能等 TTL 自然过期（最长 15 分钟）；
-  能即时生效的只有回本服务判定的路径——`userinfo` 以服务端存活令牌行为准，客户端被停用后连换码都会被拒。
-- **jti 注销集合是单实例内存实现**：即时的批量吊销只在处理该请求的那个实例内生效；
+- 下游若用 JWKS 本地验签（无状态 JWT），撤销后只能等 TTL 自然过期（最长 15 分钟）。
+- 能即时生效的只有回本服务判定的路径——`userinfo` 以服务端存活令牌行为准，客户端被停用后连换码都会被拒。
+- **jti 注销集合是单实例内存实现**：即时的批量吊销只在处理该请求的那个实例内生效。
   横向扩容后不要依赖内存状态，以令牌行判定（`userinfo`）为准。
 - **账号服务没有机器可读的 OpenAPI**：目录服务的 `GET /api/openapi.json` 只覆盖 `/api/catalog/*` 与 `/api/admin/catalog-*`，
-  **不含** `/api/oauth/*` 与 `/api/admin/oauth/*`（它们属于独立账号服务）。本文第 2–9 节就是这些端点的权威契约，
-  字段与错误码以本文与目标实例响应为准；如需机器可读描述，需要账号服务另出一份 spec。
+  不含 `/api/oauth/*` 与 `/api/admin/oauth/*`（它们属于独立账号服务）。
+- 本文第 2–9 节就是这些端点的权威契约，字段与错误码以本文与目标实例响应为准。
+  如需机器可读描述，需要账号服务另出一份 spec。
 
 ## 11. 最小可运行检查清单
 
