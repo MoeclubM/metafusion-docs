@@ -1,5 +1,51 @@
 import { defineConfig } from 'vitepress';
 
+// 五个分区按读者与任务划分；侧栏按路径分段，浏览某分区时只显示该分区页面。
+const gettingStarted = [
+  { text: '平台概览', link: '/overview' },
+  { text: '设计理念', link: '/philosophy' },
+  { text: '快速上手指南', link: '/quickstart' },
+  { text: '常见问题 (FAQ)', link: '/faq' }
+];
+
+const usingCommunity = [
+  { text: '社区讨论与交流', link: '/community-guide' },
+  { text: '资源上传与下载', link: '/upload-download' }
+];
+
+const cataloging = [
+  { text: '编目与投稿', link: '/contribute-guide' },
+  { text: '词条编辑与合并', link: '/editing-guide' },
+  { text: '权威编目与审查准则', link: '/curation-guide' },
+  { text: '固定层级与动态定义', link: '/catalog' },
+  { text: '分类体系与动态标签', link: '/taxonomy' },
+  { text: 'IFLA LRM 增强版实体模型', link: '/frbr-model' }
+];
+
+const developers = [
+  { text: 'API 概览', link: '/api-overview' },
+  { text: '认证与凭证', link: '/api-auth' },
+  { text: '第三方站点接入 OAuth 授权', link: '/oauth-integration' },
+  { text: '实体查询与详情', link: '/api-entities' },
+  { text: '检索与多维过滤', link: '/api-search' },
+  { text: '词条写入与合并接口', link: '/api-edit' },
+  { text: '资源直传与预签名下载', link: '/api-storage' },
+  { text: 'AI Agent 协作指南', link: '/agent-integration' },
+  { text: 'AI Agent API 与工具规范', link: '/api-agent' }
+];
+
+const legal = [
+  { text: '服务条款', link: '/terms-of-service' },
+  { text: '隐私政策', link: '/privacy' },
+  { text: '版权说明与 DMCA', link: '/copyright' },
+  { text: '联系站务', link: '/contact' },
+  { text: '平台更新日志', link: '/changelog' }
+];
+
+function section(text: string, items: { text: string; link: string }[]) {
+  return Object.fromEntries(items.map((item) => [item.link, [{ text, items }]]));
+}
+
 export default defineConfig({
   ignoreDeadLinks: true,
   base: '/docs/',
@@ -14,13 +60,11 @@ export default defineConfig({
     logo: '/favicon.svg',
 
     nav: [
-      { text: '元数据目录', link: '/catalog' },
-      { text: '平台指南', link: '/overview' },
-      { text: '编目指引', link: '/curation-guide' },
-      { text: 'LRM 体系', link: '/frbr-model' },
-      { text: 'AI Agent 协作', link: '/agent-integration' },
-      { text: '开放 API', link: '/api-overview' },
-      { text: '社区', link: '/community-guide' },
+      { text: '开始使用', link: '/overview' },
+      { text: '使用与社区', link: '/community-guide' },
+      { text: '编目与共建', link: '/contribute-guide' },
+      { text: '开发者与自动化', link: '/api-overview' },
+      { text: '条款与站务', link: '/terms-of-service' },
       {
         text: '返回主站',
         link: '/',
@@ -28,64 +72,13 @@ export default defineConfig({
       }
     ],
 
-    sidebar: [
-      {
-        text: '平台使用指南',
-        items: [
-          { text: '平台概览', link: '/overview' },
-          { text: '设计理念', link: '/philosophy' },
-          { text: '快速上手指南', link: '/quickstart' },
-          { text: '社区讨论与交流', link: '/community-guide' }
-        ]
-      },
-      {
-        text: '数据体系与编目规范',
-        items: [
-          { text: '固定层级与动态定义', link: '/catalog' },
-          { text: '权威编目与审查准则', link: '/curation-guide' },
-          { text: 'IFLA LRM 增强版实体模型', link: '/frbr-model' },
-          { text: '分类体系与动态标签', link: '/taxonomy' }
-        ]
-      },
-      {
-        text: 'AI Agent 与自动化协作',
-        items: [
-          { text: 'AI Agent 接入与自动化编目协作指南', link: '/agent-integration' },
-          { text: 'AI Agent 自动化 API 与工具规范', link: '/api-agent' }
-        ]
-      },
-      {
-        text: '开放 API 与开发者专区',
-        items: [
-          { text: 'API 概览', link: '/api-overview' },
-          { text: '认证与凭证', link: '/api-auth' },
-          { text: '第三方站点接入 OAuth 授权', link: '/oauth-integration' },
-          { text: '实体查询与详情', link: '/api-entities' },
-          { text: '检索与多维过滤', link: '/api-search' },
-          { text: '词条写入与合并接口', link: '/api-edit' },
-          { text: '资源直传与预签名下载', link: '/api-storage' }
-        ]
-      },
-      {
-        text: '社区共建与编辑规范',
-        items: [
-          { text: '词条编辑与合并规范', link: '/editing-guide' },
-          { text: '资源收录与投稿标准', link: '/contribute-guide' },
-          { text: '资源上传与下载', link: '/upload-download' }
-        ]
-      },
-      {
-        text: '社区条款与支持',
-        items: [
-          { text: '服务条款', link: '/terms-of-service' },
-          { text: '隐私政策', link: '/privacy' },
-          { text: '版权说明与 DMCA', link: '/copyright' },
-          { text: '常见问题 (FAQ)', link: '/faq' },
-          { text: '联系站务', link: '/contact' },
-          { text: '平台更新日志', link: '/changelog' }
-        ]
-      }
-    ],
+    sidebar: {
+      ...section('开始使用', gettingStarted),
+      ...section('使用与社区', usingCommunity),
+      ...section('编目与共建', cataloging),
+      ...section('开发者与自动化', developers),
+      ...section('条款与站务', legal)
+    },
 
     search: {
       provider: 'local',
