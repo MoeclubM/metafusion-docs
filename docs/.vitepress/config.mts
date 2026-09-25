@@ -78,11 +78,14 @@ const grouped = sections.map((section) => ({
   items: pages.filter((page) => page.group === section.key).map(({ text, link }) => ({ text, link }))
 }));
 
-// 浏览某分区任一页面时，侧栏只显示该分区的页面；分区名作为分组标题。
-const sidebar: Record<string, { text: string; items: { text: string; link: string }[] }[]> = {};
-for (const group of grouped) {
-  for (const item of group.items) sidebar[item.link] = [{ text: group.label, items: group.items }];
-}
+// 一份全站侧栏：五个分组默认折叠，当前页所在分组自动展开（VitePress 对 has-active
+// 的分组强制不折叠）。这样上一篇/下一篇能顺着分区边界走完 26 页，
+// 不会再在每个分区的末页断掉。
+const sidebar = grouped.map((group) => ({
+  text: group.label,
+  collapsed: true,
+  items: group.items
+}));
 
 export default defineConfig({
   ignoreDeadLinks: true,
@@ -97,14 +100,7 @@ export default defineConfig({
     siteTitle: 'MetaFusion Docs',
     logo: '/favicon.svg',
 
-    nav: [
-      ...grouped.map((group) => ({ text: group.label, link: group.items[0].link })),
-      {
-        text: '返回主站',
-        link: '/',
-        target: '_self'
-      }
-    ],
+    nav: grouped.map((group) => ({ text: group.label, link: group.items[0].link })),
 
     sidebar,
 
