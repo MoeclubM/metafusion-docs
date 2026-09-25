@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vitepress dev docs --port 3001 --host 0.0.0.0",
     "build": "vitepress build docs",
+    "check:nav": "node scripts/check-nav.mjs",
     "preview": "vitepress preview docs --port 3001 --host 0.0.0.0",
     "start": "sirv site --port 3001 --host 0.0.0.0 --gzip --brotli"
   },

@@ -45,6 +45,8 @@ group: "api"                      # intro / participate / model / api / legal
 - **`title` 必须与页面第一个 H1 完全一致**：不一致会让侧栏、浏览器标签与正文各说一套。
 - 分区显示名和分区先后只在 `docs/.vitepress/config.mts` 的 `sections` 里改，页面归属不要写回配置。
 - `group` 拼错、缺 `title` 或 `order` 不是数字时，构建直接报错并指出文件名——导航不接受猜测。
+- 提交前跑 `npm run check:nav`（CI 同一条）：它逐页核 `title` = H1、frontmatter 齐备、同分区 `order`
+  不重号、正文站内链接可达。解析不到分区清单时它是报错而不是"0 条通过"。
 - 正文里引用其他页面时，链接文字用对方页面的 `title`，别再用旧的侧栏叫法。
 
 ## 本地与生产

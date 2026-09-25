@@ -30,9 +30,8 @@ jobs:
         run: npm ci
       - name: vitepress build
         run: npm run build
-      - name: 死链自查（.vitepress 侧栏指向的文件必须存在）
-        run: |
-          node -e 'const fs=require("fs");const cfg=fs.readFileSync("docs/.vitepress/config.mts","utf8");const links=[...cfg.matchAll(/link: .\/([a-z0-9-]+)./g)].map(m=>m[1]);const missing=links.filter(l=>!fs.existsSync("docs/"+l+".md"));if(missing.length){console.error("侧栏指向不存在的页面:",missing);process.exit(1)}console.log("侧栏链接全部存在:",links.length,"条")'
+      - name: 导航与口径检查（title=H1、frontmatter 齐备、站内链接可达）
+        run: node scripts/check-nav.mjs
   secrets-scan:
     name: gitleaks (secrets)
     runs-on: ubuntu-latest
