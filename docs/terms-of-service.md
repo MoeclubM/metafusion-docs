@@ -1,11 +1,11 @@
 ---
 title: "服务条款"
 description: "使用 MetaFusion 即表示同意本条款。"
-order: 50
+order: 10
 group: "legal"
 ---
 
-# 服务条款（Terms of Service）
+# 服务条款
 
 > 最后更新：2026-09-23 | 适用范围：findverse.cc 及其 API 与文档站
 

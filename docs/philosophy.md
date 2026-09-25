@@ -1,8 +1,8 @@
 ---
 title: "核心理念与定位"
 description: "开放元数据、社区共建、结构化收录与受控分发原则。"
-order: 1
-group: "start"
+order: 20
+group: "intro"
 ---
 
 # 核心理念与定位

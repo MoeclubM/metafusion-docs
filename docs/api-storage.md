@@ -1,9 +1,11 @@
 ---
-title: "上传与下载"
+title: "存储上传与下载"
 description: "内容寻址存储、分片直传、绑定用途与读取可见性。"
-order: 35
+order: 60
 group: "api"
 ---
+
+# 存储上传与下载
 
 ::: tip 状态
 本页描述的 `/api/storage/*` 由独立服务 `metafusion-storage` 实现（源码见其仓库 `internal/handler/`），网关把 `/api/storage/` 分流到该服务。

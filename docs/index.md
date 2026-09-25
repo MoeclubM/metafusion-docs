@@ -10,13 +10,13 @@ hero:
     alt: MetaFusion
   actions:
     - theme: brand
-      text: 快速开始 →
+      text: 快速上手指南 →
       link: /quickstart
     - theme: alt
       text: 平台概览
       link: /overview
     - theme: alt
-      text: 开放 API 接入
+      text: API 与 Agent 接入
       link: /api-overview
 
 features:
@@ -34,11 +34,14 @@ features:
 
 | 分区 | 适合谁 | 内容 |
 | --- | --- | --- |
-| [开始使用](/overview) | 第一次接触本站 | 平台概览、设计理念、快速上手、常见问题 |
-| [使用与社区](/community-guide) | 注册用户 | 社区讨论与交流、资源上传与下载 |
-| [编目与共建](/contribute-guide) | 想参与共建的成员 | 编目投稿、词条编辑、审查准则、层级与标签体系、LRM 模型 |
-| [开发者与自动化](/api-overview) | 第三方接入与 Agent | 认证与 OAuth、实体查询、检索、写入、存储直传、Agent 协作 |
-| [条款与站务](/terms-of-service) | 所有人 | 服务条款、隐私政策、版权、联系站务、更新日志 |
+| [认识 MetaFusion](/overview) | 第一次接触本站 | 平台概览 / 核心理念与定位 / 快速上手指南 / 常见问题 |
+| [使用与共建](/community-guide) | 注册用户 | 社区使用 / 资源上传与下载 / 收录与投稿标准 / 词条编辑与合并 / 审查准则 |
+| [数据模型与术语](/catalog) | 想弄清结构怎么组织的成员 | 元数据目录核心架构 / IFLA LRM 增强版实体模型 / 标签与货架体系 |
+| [API 与 Agent 接入](/api-overview) | 第三方站点与自动化 | 接口总览 / 认证 / OAuth / 查询 / 检索 / 写入 / 存储直传 / Agent 协作与工具规范 |
+| [条款与站务](/terms-of-service) | 所有人 | 服务条款 / 隐私政策 / 版权与 DMCA / 联系方式 / 更新日志 |
+
+分区与页面顺序由每页 frontmatter 的 `group` / `order` 决定，侧栏文字取 `title`；
+新增页面只要写这三个字段，不必改导航配置。
 
 **不写内部实现与部署**：代码结构、数据库结构、部署与切流属于主仓库的协作文档；
 本机运维信息一律不入库。Agent 如何用接口浏览与修改站点数据，见

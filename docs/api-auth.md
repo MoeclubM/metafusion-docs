@@ -1,7 +1,7 @@
 ---
 title: "认证与凭证"
 description: "会话令牌、个人访问令牌（PAT）、OAuth 2.0 / OIDC、注册与邀请、开发者中心。"
-order: 31
+order: 20
 group: "api"
 ---
 

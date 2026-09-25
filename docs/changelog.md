@@ -1,8 +1,8 @@
 ---
 title: "更新日志"
 description: "文档站与平台的版本记录。"
-order: 62
-group: "meta"
+order: 50
+group: "legal"
 ---
 
 # 更新日志

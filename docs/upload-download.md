@@ -1,8 +1,8 @@
 ---
 title: "资源上传与下载"
 description: "分片直传、哈希秒传与受控下载；平台保留并分发原始文件。"
-order: 22
-group: "guide"
+order: 20
+group: "participate"
 ---
 
 # 资源上传与下载

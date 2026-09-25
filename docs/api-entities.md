@@ -1,7 +1,7 @@
 ---
 title: "实体查询与详情"
 description: "统一实体端点：多维过滤、详情、关系、收录、修订与对比。"
-order: 32
+order: 30
 group: "api"
 ---
 

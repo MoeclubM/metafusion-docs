@@ -1,49 +1,87 @@
 import { defineConfig } from 'vitepress';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// 五个分区按读者与任务划分；侧栏按路径分段，浏览某分区时只显示该分区页面。
-const gettingStarted = [
-  { text: '平台概览', link: '/overview' },
-  { text: '设计理念', link: '/philosophy' },
-  { text: '快速上手指南', link: '/quickstart' },
-  { text: '常见问题 (FAQ)', link: '/faq' }
+// 导航与侧栏的事实来源是每页 frontmatter 的 group / order / title：
+// 页面属于哪个分区、排在第几、显示什么名字，都只写在页面里；本文件只声明
+// 分区显示名与分区先后。新增页面只需带上这三个字段，不必回来改清单。
+//
+// 规则：title == 页面 H1 == 侧栏文字。三者由页面一处声明，缺字段或分组写错
+// 会在构建时直接报错，避免侧栏与正文再次跑偏。
+// 注意：VitePress 只在 config 变化时热重启，改完 frontmatter 后重启 dev server 才看到新侧栏。
+
+const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+const sections: { key: string; label: string }[] = [
+  { key: 'intro', label: '认识 MetaFusion' },
+  { key: 'participate', label: '使用与共建' },
+  { key: 'model', label: '数据模型与术语' },
+  { key: 'api', label: 'API 与 Agent 接入' },
+  { key: 'legal', label: '条款与站务' }
 ];
 
-const usingCommunity = [
-  { text: '社区讨论与交流', link: '/community-guide' },
-  { text: '资源上传与下载', link: '/upload-download' }
-];
+interface Page {
+  link: string;
+  text: string;
+  group: string;
+  order: number;
+}
 
-const cataloging = [
-  { text: '编目与投稿', link: '/contribute-guide' },
-  { text: '词条编辑与合并', link: '/editing-guide' },
-  { text: '权威编目与审查准则', link: '/curation-guide' },
-  { text: '固定层级与动态定义', link: '/catalog' },
-  { text: '分类体系与动态标签', link: '/taxonomy' },
-  { text: 'IFLA LRM 增强版实体模型', link: '/frbr-model' }
-];
+function readPage(file: string): Page | null {
+  const raw = readFileSync(join(srcDir, file), 'utf8');
+  const block = /^---\n([\s\S]*?)\n---\n/.exec(raw);
+  if (!block) return null;
 
-const developers = [
-  { text: 'API 概览', link: '/api-overview' },
-  { text: '认证与凭证', link: '/api-auth' },
-  { text: '第三方站点接入 OAuth 授权', link: '/oauth-integration' },
-  { text: '实体查询与详情', link: '/api-entities' },
-  { text: '检索与多维过滤', link: '/api-search' },
-  { text: '词条写入与合并接口', link: '/api-edit' },
-  { text: '资源直传与预签名下载', link: '/api-storage' },
-  { text: 'AI Agent 协作指南', link: '/agent-integration' },
-  { text: 'AI Agent API 与工具规范', link: '/api-agent' }
-];
+  const fields = new Map<string, string>();
+  for (const line of block[1].split('\n')) {
+    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (kv) fields.set(kv[1], kv[2].trim().replace(/^["']|["']$/g, ''));
+  }
 
-const legal = [
-  { text: '服务条款', link: '/terms-of-service' },
-  { text: '隐私政策', link: '/privacy' },
-  { text: '版权说明与 DMCA', link: '/copyright' },
-  { text: '联系站务', link: '/contact' },
-  { text: '平台更新日志', link: '/changelog' }
-];
+  // index.md 是首页（layout: home），不进导航
+  if (!fields.has('group')) return null;
 
-function section(text: string, items: { text: string; link: string }[]) {
-  return Object.fromEntries(items.map((item) => [item.link, [{ text, items }]]));
+  const group = fields.get('group') as string;
+  const text = fields.get('title');
+  const order = Number(fields.get('order'));
+
+  const problems: string[] = [];
+  if (!sections.some((item) => item.key === group))
+    problems.push(`group "${group}" 不是已声明的分区（${sections.map((s) => s.key).join(' / ')}）`);
+  if (!text) problems.push('缺少 title');
+  if (!Number.isFinite(order)) problems.push(`order "${fields.get('order')}" 不是数字`);
+  if (problems.length)
+    throw new Error(`[docs] ${file}: ${problems.join('；')}。导航由 frontmatter 单源生成，请补齐再构建。`);
+
+  return { link: `/${file.replace(/\.md$/, '')}`, text: text as string, group, order };
+}
+
+const pages = readdirSync(srcDir)
+  .filter((file) => file.endsWith('.md'))
+  .map(readPage)
+  .filter((page): page is Page => page !== null)
+  .sort(
+    (a, b) =>
+      sections.findIndex((s) => s.key === a.group) -
+        sections.findIndex((s) => s.key === b.group) || a.order - b.order
+  );
+
+const emptySections = sections.filter(
+  (section) => !pages.some((page) => page.group === section.key)
+);
+if (emptySections.length)
+  throw new Error(`[docs] 分区没有页面：${emptySections.map((s) => s.label).join(' / ')}`);
+
+const grouped = sections.map((section) => ({
+  ...section,
+  items: pages.filter((page) => page.group === section.key).map(({ text, link }) => ({ text, link }))
+}));
+
+// 浏览某分区任一页面时，侧栏只显示该分区的页面；分区名作为分组标题。
+const sidebar: Record<string, { text: string; items: { text: string; link: string }[] }[]> = {};
+for (const group of grouped) {
+  for (const item of group.items) sidebar[item.link] = [{ text: group.label, items: group.items }];
 }
 
 export default defineConfig({
@@ -60,11 +98,7 @@ export default defineConfig({
     logo: '/favicon.svg',
 
     nav: [
-      { text: '开始使用', link: '/overview' },
-      { text: '使用与社区', link: '/community-guide' },
-      { text: '编目与共建', link: '/contribute-guide' },
-      { text: '开发者与自动化', link: '/api-overview' },
-      { text: '条款与站务', link: '/terms-of-service' },
+      ...grouped.map((group) => ({ text: group.label, link: group.items[0].link })),
       {
         text: '返回主站',
         link: '/',
@@ -72,13 +106,7 @@ export default defineConfig({
       }
     ],
 
-    sidebar: {
-      ...section('开始使用', gettingStarted),
-      ...section('使用与社区', usingCommunity),
-      ...section('编目与共建', cataloging),
-      ...section('开发者与自动化', developers),
-      ...section('条款与站务', legal)
-    },
+    sidebar,
 
     search: {
       provider: 'local',

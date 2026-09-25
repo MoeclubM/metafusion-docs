@@ -1,11 +1,11 @@
 ---
-title: "权威编目与元数据审查准则"
+title: "权威编目与审查准则"
 description: "纯净题名、分层建模、盒装合集、表达复用、DAG 织网与审查核验清单。"
-order: 12
-group: "guide"
+order: 50
+group: "participate"
 ---
 
-# MetaFusion 权威编目与元数据审查准则
+# 权威编目与审查准则
 
 本准则面向在本平台创建、修改、导入与审核元数据的社区考据员与 AI Agent。
 
@@ -198,7 +198,7 @@ group: "guide"
 
 ## 8. 延伸阅读
 
-- [AI Agent 接入与自动化编目协作指南](/agent-integration)
+- [AI Agent 协作指南](/agent-integration)
 - [IFLA LRM 增强版实体模型](/frbr-model)
-- [分类体系与动态标签](/taxonomy)
+- [标签、货架与多语言体系](/taxonomy)
 - [新建与编辑（写入 API）](/api-edit)

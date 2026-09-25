@@ -1,8 +1,8 @@
 ---
 title: "资源收录与投稿标准"
 description: "MetaFusion 媒体资源收录流程、文件格式建议与审核机制。"
-order: 21
-group: "guide"
+order: 30
+group: "participate"
 ---
 
 # 资源收录与投稿标准

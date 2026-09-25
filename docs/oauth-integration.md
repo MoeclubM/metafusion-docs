@@ -1,7 +1,7 @@
 ---
 title: "第三方站点接入 OAuth 授权"
 description: "把 MetaFusion 作为 OAuth 2.0 / OIDC 授权方接入第三方站点：发现文档、授权码与 PKCE、令牌与 userinfo、客户端管理端与已知限制。"
-order: 37
+order: 70
 group: "api"
 ---
 

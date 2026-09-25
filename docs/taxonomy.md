@@ -1,11 +1,11 @@
 ---
-title: "编目体系：标签 / 货架 / 封面 / 多语言"
+title: "标签、货架与多语言体系"
 description: "MetaFusion 的标签体系、虚拟货架规则、封面比例与多语言本地化。"
-order: 11
+order: 30
 group: "model"
 ---
 
-# 编目体系：标签 / 货架 / 封面 / 多语言
+# 标签、货架与多语言体系
 
 MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`）。作品形态由服务端动态定义（types + 字段）表达，规格由发行版与载体表达，检索特征靠「自由标签 + 虚拟货架 + 实体关系边」呈现。
 
@@ -76,7 +76,7 @@ MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `c
 :::
 
 - **图片引用**：`pictures` 只保存引用（`url` + `caption` + `taken_at` + `source`），目录侧不抓取、不转存；需要长期稳定的图片地址就用存储服务的 `GET /api/storage/assets/:id/content`。
-- 常见比例：音乐 1:1、影视 2:3、书籍 3:4（见 [权威编目与元数据审查准则](/curation-guide)）。
+- 常见比例：音乐 1:1、影视 2:3、书籍 3:4（见 [权威编目与审查准则](/curation-guide)）。
 
 ## 4. 多语言本地化
 

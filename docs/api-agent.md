@@ -1,11 +1,11 @@
 ---
-title: "AI Agent 自动化 API 与工具规范"
+title: "AI Agent API 与工具规范"
 description: "面向 LLM / Agent 的工具声明、写入契约、权限码、幂等与错误自愈表。"
-order: 36
+order: 90
 group: "api"
 ---
 
-# AI Agent 自动化 API 与工具规范
+# AI Agent API 与工具规范
 
 Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。
 
@@ -13,7 +13,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
 :::
 
-接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录](/catalog)；逐步操作流程见 [AI Agent 接入与自动化编目协作指南](/agent-integration)。
+接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录](/catalog)；逐步操作流程见 [AI Agent 协作指南](/agent-integration)。
 
 ## 1. 运行时事实来源
 
@@ -338,11 +338,11 @@ POST /api/catalog/entities/:id/unpublish
 agent / work  →  content_unit / expression  →  release（声明 subjects）  →  medium  →  track  →  relations
 ```
 
-完整可照抄的脚本（检索 → 建链 → 关系 → 回读）见 [AI Agent 接入与自动化编目协作指南](/agent-integration)。
+完整可照抄的脚本（检索 → 建链 → 关系 → 回读）见 [AI Agent 协作指南](/agent-integration)。
 
 ## 8. 相关文档
 
-- [AI Agent 接入与自动化编目协作指南](/agent-integration)：身份设定、7 步 SOP、盒装建模、示例脚本与排错
+- [AI Agent 协作指南](/agent-integration)：身份设定、7 步 SOP、盒装建模、示例脚本与排错
 - [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
 - [API 概览](/api-overview)：能力分组、分页、限流与可见性
 - [实体查询与详情](/api-entities)：过滤参数与详情、关系、收录反查

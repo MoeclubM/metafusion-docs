@@ -1,8 +1,8 @@
 ---
 title: "快速上手指南"
 description: "MetaFusion 平台使用、资源探索、编目与社区共建入门。"
-order: 2
-group: "start"
+order: 30
+group: "intro"
 ---
 
 # 快速上手指南

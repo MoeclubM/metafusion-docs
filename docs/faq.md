@@ -1,11 +1,11 @@
 ---
 title: "常见问题"
 description: "FAQ：邀请、审核、播放、API、限流等常见问题解答。"
-order: 61
-group: "meta"
+order: 40
+group: "intro"
 ---
 
-# 常见问题（FAQ）
+# 常见问题
 
 ## 邀请与注册
 

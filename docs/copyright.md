@@ -1,7 +1,7 @@
 ---
 title: "版权与 DMCA"
 description: "版权提示、合规要求与侵权投诉流程。"
-order: 52
+order: 30
 group: "legal"
 ---
 

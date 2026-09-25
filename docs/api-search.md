@@ -1,7 +1,7 @@
 ---
 title: "检索"
 description: "关键词检索的统一入口、匹配口径与 OpenSearch 现状。"
-order: 33
+order: 40
 group: "api"
 ---
 

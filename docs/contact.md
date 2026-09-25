@@ -1,8 +1,8 @@
 ---
 title: "联系方式"
 description: "如何联系站务、报告问题与贡献文档。"
-order: 60
-group: "meta"
+order: 40
+group: "legal"
 ---
 
 # 联系方式

@@ -1,7 +1,7 @@
 ---
 title: "API 概览"
 description: "统一 /api 主干：实体查询、详情、写入、定义与导入接口。"
-order: 30
+order: 10
 group: "api"
 ---
 
@@ -123,7 +123,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 见下文 |
 | 私信 | 见下文 | 需登录 |
 | 举报与申诉 | 见下文 | 见下文 |
-| 资源文件 | `/api/storage/*` | 见 [资源直传与预签名下载](/api-storage) |
+| 资源文件 | `/api/storage/*` | 见 [存储上传与下载](/api-storage) |
 
 ### 写入权限
 

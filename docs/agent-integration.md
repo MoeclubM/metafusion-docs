@@ -1,15 +1,15 @@
 ---
-title: "AI Agent 接入与自动化编目协作指南"
+title: "AI Agent 协作指南"
 description: "身份设定、七步 SOP、八类 kind 层级建模、盒装与合集、表达复用、审计留痕与可照抄示例。"
-order: 35
+order: 80
 group: "api"
 ---
 
-# AI Agent 接入与自动化编目协作指南
+# AI Agent 协作指南
 
 本指南面向以 Agent 身份接入 MetaFusion 的自动化编目流程：身份设定与铁律、七步标准作业流程、八类 kind 的层级建模、盒装与合集的层级处理、表达跨发行复用、写入与审计留痕，以及可照抄的 Python / TypeScript / cURL 脚本。
 
-接口与错误码契约见 [AI Agent 自动化 API 与工具规范](/api-agent)，写入 DTO 与乐观锁细节见 [新建与编辑](/api-edit)，实体边界与动态定义见 [元数据目录](/catalog) 与 [API 概览](/api-overview)。
+接口与错误码契约见 [AI Agent API 与工具规范](/api-agent)，写入 DTO 与乐观锁细节见 [新建与编辑](/api-edit)，实体边界与动态定义见 [元数据目录](/catalog) 与 [API 概览](/api-overview)。
 
 > 运行时事实来源是 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`。本页示例只示范请求形状，字段码、词表项与关系码一律以目标实例的定义为准。
 
@@ -526,7 +526,7 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 
 ## 8. 排错
 
-完整错误码表见 [AI Agent 自动化 API 与工具规范](/api-agent)。编目过程中最常撞到的几类：
+完整错误码表见 [AI Agent API 与工具规范](/api-agent)。编目过程中最常撞到的几类：
 
 | 现象 | 含义 | 动作 |
 | --- | --- | --- |
@@ -553,7 +553,7 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 
 ## 9. 相关文档
 
-- [AI Agent 自动化 API 与工具规范](/api-agent)：工具声明、权限码、幂等与完整错误码表
+- [AI Agent API 与工具规范](/api-agent)：工具声明、权限码、幂等与完整错误码表
 - [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
 - [API 概览](/api-overview)：能力分组、分页、限流与可见性
 - [实体查询与详情](/api-entities)：过滤参数、详情、关系与收录反查

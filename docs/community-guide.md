@@ -1,8 +1,8 @@
 ---
-title: "社区使用"
+title: "社区使用指南"
 description: "板块、发帖、回帖、收藏与社区规范指南。"
-order: 40
-group: "community"
+order: 10
+group: "participate"
 ---
 
 # 社区使用指南

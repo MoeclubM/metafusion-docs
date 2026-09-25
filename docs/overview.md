@@ -1,8 +1,8 @@
 ---
-title: "概览"
+title: "平台概览"
 description: "MetaFusion 平台定位、核心特色与文档导航。"
-order: 0
-group: "start"
+order: 10
+group: "intro"
 ---
 
 # 平台概览

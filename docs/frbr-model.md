@@ -1,7 +1,7 @@
 ---
 title: "IFLA LRM 增强版实体模型"
 description: "LRM 分层思想在 MetaFusion 的落地：八类固定骨架、结构字段与关系。"
-order: 10
+order: 20
 group: "model"
 ---
 
@@ -129,5 +129,5 @@ work ──1:N──▶ content_unit ──1:N──▶ expression
 ## 相关页面
 
 - [元数据目录教程](/catalog)：八类骨架的实操建模与后端配置入口
-- [编目体系：标签 / 货架 / 封面 / 多语言](/taxonomy)：标签、货架与翻译策略
+- [标签、货架与多语言体系](/taxonomy)：标签、货架与翻译策略
 - [实体查询与详情](/api-entities)：用 `/api/catalog/entities` 消费这套模型

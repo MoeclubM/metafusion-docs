@@ -1,11 +1,11 @@
 ---
 title: "隐私政策"
 description: "我们收集什么、如何使用、如何保护与你的权利。"
-order: 51
+order: 20
 group: "legal"
 ---
 
-# 隐私政策（Privacy Policy）
+# 隐私政策
 
 > 最后更新：2026-08-21
 

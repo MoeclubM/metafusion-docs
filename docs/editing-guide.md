@@ -1,8 +1,8 @@
 ---
 title: "词条编辑与合并规范"
 description: "MetaFusion 社区词条编辑原则、命名规范、消歧与实体合并准则。"
-order: 20
-group: "guide"
+order: 40
+group: "participate"
 ---
 
 # 词条编辑与合并规范
