@@ -286,19 +286,17 @@ GET /api/catalog/entities/:id/revisions
 - 导出按调用者身份判可见性（匿名只看已发布），不存在或不可见都是 `404 not_found`
 - 提案由服务端强制落 `pending_review`，不能绕过审核直接发布
 
-## 定义版本管理
+## 动态定义管理
 
 动态定义（类型、字段、词表、关系、模板）由管理员维护，全部需要 `catalog.definitions.manage`：
 
 | 端点 | 作用 |
 |---|---|
-| `GET /api/admin/catalog-definitions` | 版本列表（`include_document=false` 时不带文档，响应顶层回显该选择） |
-| `POST /api/admin/catalog-definitions` | 存一版不可变草稿（文档 + `base_version` + 证据） |
-| `GET /api/admin/catalog-definitions/:id` | 读任意历史版本的完整文档 |
-| `GET /api/admin/catalog-definitions/:id/diff` | 与基线版本的字段级差异（`against` 缺省取该版本的 `base_version`） |
-| `GET /api/admin/catalog-definitions/:id/impact` | 用当前全量数据校验草稿的影响面 |
-| `POST /api/admin/catalog-definitions/:id/publish` | 发布兼容草稿 |
-| `POST /api/admin/catalog-definitions/:id/rollback` | 把历史版本重新起草并发布（文档已一致时 `no_op=true`，不写库） |
+| `GET /api/admin/catalog-definitions` | 读取单份生效文档与 `etag` |
+| `POST /api/admin/catalog-definitions/impact` | 只读回放请求体中的 `document`，返回阻断项和悬挂引用警告 |
+| `PUT /api/admin/catalog-definitions` | 提交完整 `document`、`expected_etag`、编辑说明与来源；服务端事务内再次检查影响，过期标记返回 `409 version_conflict` |
+
+定义只保留一份生效配置。`etag` 仅防止多个编辑器互相覆盖，不能用来读取历史文档；定义版本、对比和回滚端点已废弃。
 
 ::: warning 注意
 定义、货架与外部权威库的名称是四语硬约束：每个名称都要带 `zh-CN`、`zh-TW`、`en-US`，

@@ -172,7 +172,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | `catalog.entity.edit` | 维护公开条目，并维护自己创建的任意状态条目 | 不在路由上硬闸：`POST / PUT /api/catalog/entities` 只要求登录；无此码者只能写自己创建的 `draft` / `pending_review` |
 | `catalog.relation.edit` | 关系创建、替换与删除 | 硬闸：`POST /api/catalog/relations`、`PUT / DELETE /api/catalog/relations/:id` |
 | `catalog.lifecycle.manage` | 发布/处置他人的未发布条目；合并、退役与下架 | 合并/退役硬闸：`POST /api/catalog/entities/:id/lifecycle`；下架硬闸：`POST /api/catalog/entities/:id/unpublish`；发布他人草稿走实体写入 `PUT`（同一权限码判定） |
-| `catalog.definitions.manage` | 定义版本与外部权威库管理 | 硬闸：`/api/admin/catalog-definitions`、`/api/admin/external-databases` |
+| `catalog.definitions.manage` | 生效定义与外部权威库管理 | 硬闸：`/api/admin/catalog-definitions`、`/api/admin/external-databases` |
 | `catalog.import.submit` | 外部导入的来源清单、预览与落库 | 硬闸：`GET /api/importer/sources`、`POST /api/importer/preview`、`POST /api/importer/import` |
 | `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
 

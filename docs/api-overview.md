@@ -112,7 +112,7 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 外部权威库 | `GET /api/catalog/external-databases` | 开放 |
 | 首页偏好 | `GET\|PUT /api/catalog/me/home-preferences` | 需登录 |
 | 站内通知 | `GET /api/notifications`、`GET /api/notifications/unread-count`、`POST /api/notifications/:id/read`、`POST /api/notifications/read-all` | 需登录；见下文 |
-| 定义版本管理 | `GET\|POST /api/admin/catalog-definitions`、`/{id}`、`/{id}/diff\|impact\|publish\|rollback` | `catalog.definitions.manage` |
+| 动态定义管理 | `GET\|PUT /api/admin/catalog-definitions`、`POST /api/admin/catalog-definitions/impact` | `catalog.definitions.manage` |
 | 货架规则管理 | `/api/admin/shelves`（含 `/{id}` 读写删） | `catalog.shelves.manage` |
 | 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
 | 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |

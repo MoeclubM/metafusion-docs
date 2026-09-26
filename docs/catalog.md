@@ -83,7 +83,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 - 创建入口为 `/new`，不带层级时落到编目枢纽 `/contribute`。
 - **管理后台为 `/admin`**，只管理元数据目录：实体、定义、货架、外部库、导入审核。账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」。
 
-发行目录可一次读取 `GET /api/catalog/releases/{id}/toc`：返回发行、按位置排序的 Medium 与 Track、去重的可见 Expression 及定义版本。响应基于同一数据库快照；不可见子项不会泄露。
+发行目录可一次读取 `GET /api/catalog/releases/{id}/toc`：返回发行、按位置排序的 Medium 与 Track、去重的可见 Expression 及当前定义 `etag`。响应基于同一数据库快照；不可见子项不会泄露。
 
 单实体接口仍可用于编辑与独立详情。
 
