@@ -169,7 +169,12 @@ DELETE /api/storage/bindings/{binding_id}
 | GET | `/api/storage/download/{asset_id}` | 可读 | 对象存储模式返回预签名地址；本地模式直接流式下发 |
 | GET | `/api/storage/assets/{id}/content` | 可读 | 长期可引用的原档内联地址 |
 | POST | `/api/storage/verify-hash` | 探测匿名可用；按 asset 校验需登录 | 秒传探测或按 asset 校验摘要 |
-| GET | `/api/storage/stats` | 审核者 | 完成态文件数与占用字节（`storage.asset.moderate`） |
+| GET | `/api/storage/stats` | 审核者 | 完成态文件数与占用字节、待完成数、禁发数（`storage.asset.moderate`） |
+| GET | `/api/storage/moderation/blocked?limit=100&offset=0` | 审核者 | 禁发资产清单；`limit` 范围 1–500，默认 100，按禁发时间倒序 |
+| POST | `/api/storage/assets/{id}/block` | 审核者 | 禁发资产，可传 JSON `{"reason":"处置原因"}`（最多 280 字） |
+| POST | `/api/storage/assets/{id}/unblock` | 审核者 | 解除禁发，保留资产状态与绑定 |
+
+`/stats` 返回 `{ "assets": 0, "bytes": 0, "pending": 0, "blocked": 0 }`。禁发清单返回 `{ "assets": [...], "limit": 100, "offset": 0 }`；资产对象含 `blocked`、`blocked_reason`、`blocked_at`。
 
 `/api/storage/assets/{id}/content` 的补充说明：对象存储模式下预签名地址的主机对浏览器不可达且会过期，
 目录侧引用外部图片时改用本端点（原样下发，不转码；按请求判可见性，只进私有缓存）。

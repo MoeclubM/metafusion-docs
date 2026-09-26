@@ -60,7 +60,7 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | `scopes_supported` | `["openid", "profile", "email"]` |
 | `subject_types_supported` | `["public"]` |
 | `id_token_signing_alg_values_supported` | `["RS256"]` |
-| `claims_supported` | `["sub", "preferred_username", "email", "role"]` |
+| `claims_supported` | `["sub", "preferred_username", "email"]` |
 
 根路径的 `/.well-known/openid-configuration`（OIDC 标准入口）与 `/api/.well-known/openid-configuration` 返回同一份文档。
 
@@ -121,11 +121,11 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
 | scope | 含义 | 同意页上的说明 | 相关声明 |
 |---|---|---|---|
 | `openid` | 确认身份 | 返回账号 ID（`sub`） | `sub` |
-| `profile` | 读取基本资料 | 用户名与角色 | `username`、`role` |
+| `profile` | 读取基本资料 | 用户名 | `username` |
 | `email` | 读取邮箱 | 账号邮箱地址 | `email` |
 
 ::: tip userinfo 按 scope 裁剪
-`userinfo` 只回令牌被授予 scope 覆盖的字段：`openid` 给 `sub` / `id`，`profile` 追加 `username` / `role`，`email` 追加 `email`。
+`userinfo` 只回令牌被授予 scope 覆盖的字段：`openid` 给 `sub` / `id`，`profile` 追加 `username`，`email` 追加 `email`。
 只申请 `openid` 就拿不到邮箱——同意页上说给什么，实际就只给什么（2026-09-19 审计 S-10 的修复）。
 :::
 
@@ -161,7 +161,7 @@ curl -sS "https://<your-host>/api/.well-known/openid-configuration"
   "token_type": "Bearer",
   "expires_in": 900,
   "scope": "openid profile",
-  "user": { "id": "<user-uuid>", "username": "<username>", "email": "<email>", "role": "user" },
+  "user": { "id": "<user-uuid>", "username": "<username>", "email": "<email>" },
   "id_token": "<rs256-jwt>",
   "id_token_expires_at": 1767225600
 }
@@ -200,12 +200,12 @@ curl -sS "https://<your-host>/api/oauth/userinfo" -H "Authorization: Bearer <acc
 | 令牌 scope | 追加字段 |
 |---|---|
 | `openid` | ——（只有 `sub` / `id`） |
-| `profile` | `username`、`role` |
+| `profile` | `username` |
 | `email` | `email` |
 
 ```json
 // scope=openid profile email 时的响应
-{ "sub": "<user-uuid>", "id": "<user-uuid>", "username": "<username>", "role": "user", "email": "<email>" }
+{ "sub": "<user-uuid>", "id": "<user-uuid>", "username": "<username>", "email": "<email>" }
 ```
 
 | 响应 | `error` | 触发条件 |

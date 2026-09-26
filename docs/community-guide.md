@@ -44,7 +44,7 @@ MetaFusion 社区遵循「浏览开放、互动需登录」的原则：板块、
 
 | 端点 | 归属服务 | 认证 | 返回 |
 | --- | --- | --- | --- |
-| `GET /api/users/:id` | 账号服务 | 匿名 | `{user, stats}`：`user` 是 `id` / `username` / `role`（`banned` 仅封禁时下发、`email` 仅本人可见），`stats.invited_count` 是邀请成功的人数（详见 [认证与凭证](/api-auth)） |
+| `GET /api/users/:id` | 账号服务 | 匿名 | `{user, stats}`：`user` 是 `id` / `username`（`banned` 仅封禁时下发、`email` 仅本人可见），`stats.invited_count` 是邀请成功的人数（详见 [认证与凭证](/api-auth)） |
 | `GET /api/users/:id/stats` | 互动服务 | 匿名 | `{"stats":{"topics_created","comments_created","favorites_count"}}` |
 | `GET /api/users/:id/contributions` | 目录服务 | 匿名 | 目录侧贡献流（`all` / `revisions` / `works` / `releases` / `artists` 五个 tab），详见 [实体查询与详情](/api-entities) |
 
@@ -88,14 +88,13 @@ PUT  /api/messages/with/{id}/read                     # 标记该会话的未读
 | 操作 | 接口 | 所需权限码 | 可改内容 |
 | --- | --- | --- | --- |
 | 置顶 / 取消置顶 | `PUT /api/community/topics/{id}/pin` | `community.topic.pin` | 请求体 `{"pinned": true\|false}`；写主题的 `is_pinned` 列，主题列表里置顶项排在前面 |
-| 板块配置 | `PUT /api/community/boards/{code}` | `community.board.manage` | `name`、`description`（都是单一字符串）、`color`、`icon`、`sort_order`、`is_enabled`、`show_in_feed` |
+| 板块配置 | `PUT /api/community/boards/{code}` | `community.board.manage` | 四语 `names` / `descriptions` map、`color`、`icon`、`sort_order`、`is_enabled`、`show_in_feed` |
 | 帖子巡检（只读） | `GET /api/community/posts` | `community.post.moderate` | 跨主题列楼中回复，`q` / `page` / `page_size`，不修改任何数据（详见下节） |
 
 - **只改传入字段**：置顶与板块配置这两个写接口都只改传入字段。单独切 `show_in_feed` 或 `is_enabled` 时不必回传整份配置，也就不会因为漏带字段而把配置清空。
 - **板块 `code` 不可改**：它是主题的板块归属键，改码要么让存量主题悬空、要么得级联改主题归属。
 - **不提供新增与删除板块**：板块由种子播种、运营配置，删掉会让存量主题失去归属。
-- **名称校验**：板块名称按单语种字符串校验。`name` 须为非空字符串（空值或空白返回 `400 invalid_payload`），`description` 可为空串；区块颜色与图标不接受空值。
-- **目录侧定义仍要求四语种**：目录服务的定义 / 货架 / 外部库（`/api/admin/catalog-definitions`、`/api/admin/shelves`、`/api/admin/external-databases`）仍要求四语种（`four_locale_names_required`）。
+- **名称校验**：`names` 必须提供四语非空值；`descriptions` 可用四语全空字符串清空。缺语种返回 `400 four_locale_names_required`；颜色与图标不接受空值。
 - **权限与状态码**：缺权限码 `403 forbidden`，未登录 `401 authentication_required`，主题或板块不存在 `404 not_found`，请求体不合法（如置顶缺 `pinned`、板块空载荷）`400 invalid_payload`。
 
 ### 帖子治理列表（只读）

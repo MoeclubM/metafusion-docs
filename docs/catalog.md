@@ -185,7 +185,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ### 用户与密码
 
-`PUT /api/admin/users/:id/role` 请求体为 `{role}`，取值为 `user / editor / admin`。创建账号默认 `editor`，密码长度 12–72，且不能降级唯一的管理员。
+账号权限由权限组决定。`PUT /api/admin/users/:id/groups` 用 `{groups: [...]}` 替换成员权限组；密码长度为 12–72。
 
 改密 `PUT /api/auth/password`，请求体 `{old_password, new_password}`。
 

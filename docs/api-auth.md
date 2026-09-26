@@ -135,7 +135,7 @@ POST /api/auth/register   # { username, email?, password, invite_code? }，成�
 - 用户名 2–80 字符且不含空白，密码 12–72 字符；用户名或邮箱被占用返回 `username_or_email_taken`。
 - 邮箱可省略，服务端按 `<用户名>@<默认域>` 补占位地址；新账号进 `registration_default_groups`（默认 `member` 组）。
 - `require_email_verification` 目前恒为 `false`（邮件通道未接入）。
-- 成功响应 `{ token, access_token, token_type, expires_in, user }`：`access_token` 与 `token` 同值，`expires_in` 默认 900，并写入 HttpOnly Cookie `mf_session`。
+- 成功响应 `{ access_token, token_type, expires_in, user }`：`expires_in` 默认 900，并写入 HttpOnly Cookie `mf_session`。
 
 ### 首次部署初始化
 
@@ -200,13 +200,13 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 
 ```json
 {
-  "user": { "id": "<uuid>", "username": "moe", "role": "editor", "email": "moe@example.com" },
+  "user": { "id": "<uuid>", "username": "moe", "display_name": "Moe", "email": "moe@example.com" },
   "stats": { "invited_count": 3 }
 }
 ```
 
-- 字段只来自 `auth.users` 里真实存在的列：`id` / `username` / `role` / `banned` / `email`。
-- 没有 `display_name` / `avatar_url` / `bio` / `created_at`：账号库里没有这些列，接口也不填占位值（空字符串会被读成「这个人就是没头像」，而事实是「没有这个来源」）。
+- 字段来自 `auth.users`：`id` / `username` / `display_name` / `bio` / `banned` / `email`。不返回账号角色。
+- `avatar_url` / `created_at` 不在这份公开资料投影里。
 - `email` 只在请求者就是本人时下发（带本人令牌或 Cookie）；匿名与看别人都缺省。
 - `banned` 与管理台 `GET /api/admin/users` 同一口径：只在为真时出现。
 - `stats.invited_count` 是「该用户邀请成功的人数」，只算真被用掉、并因此注册成功的邀请。`auth.invite_uses` 记录谁用了哪个码，码归 `auth.invites.created_by` 所有。
@@ -224,7 +224,7 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 
 | 端点 | 权限码 |
 |---|---|
-| `GET\|POST /api/admin/users`、`PUT /api/admin/users/:id/role`、`PUT /api/admin/users/:id/password` | `auth.users.manage` |
+| `GET\|POST /api/admin/users`、`PUT /api/admin/users/:id/password` | `auth.users.manage` |
 | `PUT /api/admin/users/:id/groups` | `auth.users.manage` |
 | `PUT /api/admin/users/:id/ban`（封禁 / 解封，body `{ "banned": true \| false }`） | `auth.users.manage` |
 | `GET\|POST /api/admin/groups`、`PUT\|DELETE /api/admin/groups/:code` | `auth.groups.manage` |
@@ -233,9 +233,9 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 | `GET\|POST /api/admin/invites`、`POST /api/admin/invites/:code/revoke` | `auth.invites.manage` |
 | `/api/admin/oauth/*`（客户端治理、吊销令牌、审计） | `auth.oauth.manage` |
 
-管理员创建账号用 `POST /api/admin/users`（`{ username, email, password }`，默认角色 `editor`）；角色取值 `user` / `editor` / `admin`。
+管理员创建账号用 `POST /api/admin/users`（`{ username, email, password }`）。新账号的能力由权限组决定。
 
-授权判定走权限码（由权限组下发到令牌的 `permissions`），角色只在令牌没有任何 `permissions` 声明时兜底。`GET /api/admin/users` 的每一项带 `banned`（仅当为真时下发）。
+授权判定只看权限组下发到令牌的 `permissions`；空权限不授予任何管理能力。`GET /api/admin/users` 的每一项带 `banned`（仅当为真时下发）。
 
 ### 账号封禁
 
