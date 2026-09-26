@@ -166,6 +166,8 @@ DELETE /api/storage/bindings/{binding_id}
 | --- | --- | --- | --- |
 | GET | `/api/storage/entities/{id}/files` | 实体可见 | 「这个介质/轨道/表达上挂了哪些文件」入口 |
 | GET | `/api/storage/assets/{id}` | 可读 | 文件元数据与绑定列表 |
+| GET | `/api/storage/assets?limit=50&offset=0&status=complete&name=cover` | 审核者 | 资产清单；状态和文件名可选筛选，按创建时间倒序 |
+| GET | `/api/storage/bindings?limit=50&offset=0` | 审核者 | 全站绑定清单，含所指资产，按创建时间倒序 |
 | GET | `/api/storage/download/{asset_id}` | 可读 | 对象存储模式返回预签名地址；本地模式直接流式下发 |
 | GET | `/api/storage/assets/{id}/content` | 可读 | 长期可引用的原档内联地址 |
 | POST | `/api/storage/verify-hash` | 探测匿名可用；按 asset 校验需登录 | 秒传探测或按 asset 校验摘要 |
@@ -175,6 +177,8 @@ DELETE /api/storage/bindings/{binding_id}
 | POST | `/api/storage/assets/{id}/unblock` | 审核者 | 解除禁发，保留资产状态与绑定 |
 
 `/stats` 返回 `{ "assets": 0, "bytes": 0, "pending": 0, "blocked": 0 }`。禁发清单返回 `{ "assets": [...], "limit": 100, "offset": 0 }`；资产对象含 `blocked`、`blocked_reason`、`blocked_at`。
+
+资产与绑定清单只允许持 `storage.asset.moderate` 的账号访问；两者的 `limit` 范围是 1–100（默认 50），`offset` 从 0 起，响应含 `has_more`。资产清单的 `status` 可为 `complete` 或 `pending`，`name` 最多 100 字符；清单只提供元数据，内容预览仍走 `/assets/{id}/content` 并逐次鉴权。
 
 `/api/storage/assets/{id}/content` 的补充说明：对象存储模式下预签名地址的主机对浏览器不可达且会过期，
 目录侧引用外部图片时改用本端点（原样下发，不转码；按请求判可见性，只进私有缓存）。
