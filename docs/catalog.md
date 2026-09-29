@@ -197,12 +197,13 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 能力清单（部署态）
 
-`GET /api/capabilities` 保留原有响应形状 `{modules:[{id,version,dependencies,enabled,healthy}]}`，但含义已从"进程内模块开关"变为**部署态**：
+`GET /api/capabilities` 返回 `{modules:[{id,enabled}]}`：这是**部署态声明**，不是健康探测结果——
+目录服务不探测上游、不发任何出站请求，`enabled` 只取决于是否配置了对应上游地址，`exchange` 由目录自身提供、恒为真。
+清单里没有 `healthy` / `version` / `dependencies`：上游当时的可用性由网关与运维面各自读各服务的
+`GET /health`、`GET /ready` 判断，不由目录代答。
 
-- `enabled` 取决于是否配置了对应上游地址。
-- `healthy` 来自后台每 30 秒一次的 `/health` 探测缓存（请求路径只读缓存，不被上游拖慢）。
-
-`PUT /api/admin/modules/:id` 需要管理员（与生命周期同一档 `catalog.lifecycle.manage`）。未登录 `401 authentication_required`，无权限 `403 forbidden`。有权限时恒定返回 `409 module_toggle_retired`——能力由部署决定（服务在不在），没有可切开的开关。
+运行时模块开关已随子系统拆分退役：**不再有 `PUT /api/admin/modules/:id`**（请求该路径就是普通 404）。
+要开某项能力就部署对应服务，而不是在后台切换。
 
 | 能力 | 由谁提供 | 说明 |
 | --- | --- | --- |
