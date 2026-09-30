@@ -18,7 +18,7 @@ group: "participate"
 
 八条底线：
 
-1. **实体题名必须纯净**：作品层（`work`）不写季数、载体、规格、音质、字幕组等修饰词
+1. **作品题名忠于来源与身份**：正式题名中的季数、Vol、剧场版等用于区分作品时保留；载体、音质、压制组等额外规格放在发行、载体或资源层，不能用正则机械删词
 2. **发行规格只写实**：条码、厂牌、装帧等物理/数字出版特征落在发行版（`release`）与载体（`medium`）
 3. **创作内核与表现层分离**：作品层承载抽象创作（作词/作曲/原著/剧本原案），`expression` 承载具体表现（录音母版、正片剪辑、章节正文及其演职），`track` 只承载载体上的收录位置
 4. **多作品发行不张冠李戴**：发行必须声明实际收录表达所属的全部作品；仅在证据支持时才另建汇编 Work
@@ -31,7 +31,7 @@ group: "participate"
 
 | 层级 | 对应关系 | 边界 |
 |---|---|---|
-| `work` | 抽象创作本体 | 一部作品只有一个作品实体；季、卷、规格不进这层 |
+| `work` | 抽象创作本体 | 有独立身份的季/卷可各建 Work，由 Collection 聚合；同作品章节用 ContentUnit，发行规格属于 Release/Medium |
 | `content_unit` | 同作品内的目录节点 | 第几章、第几话、某条路线；父子必须同属一个 `work` |
 | `expression` | 具体表现 | 属于一个 `work`，可选挂在 `content_unit` 下；版本差异与演职在这一层 |
 | `release` | 公开发行 | `subjects` 声明收录了哪些 `work`；条码与品番在这一层 |
@@ -43,7 +43,7 @@ group: "participate"
 ### 2.1 演职关系的落点
 
 - **作品层创作关系**：`created_by`、`composed_by`、`lyricist_of`、`written_by`（剧场动画、影视剧本、原著改编）
-- **表现层制作与演职**：`performed_by`（演唱/演奏）、`arranged_by`（编曲）、`directed_by`（导演/分集导演）、`photographed_by`、`illustrated_by`（插画）、`narrated_by`（朗读/旁白）、`voiced_by`（配音，角色经 `character` 引用实体）
+- **具体制作与演职**：演唱、编曲、摄影、插画、朗读、配音按关系 source_kinds 选择层级；当前导演/分集导演 directed_by 连接 Work/ContentUnit，不能把制作职位一概连到 Expression。角色用 character 引用。
 - **译本与改写**：`translated_by`（译者）、表达层之间用 `translation_of` / `revision_of`
 - **没有贴切职位码时**：用 `credit_for` 兜底，职位原文写进 `attributes.credit_role`；有精确码时不重复建边
 
@@ -121,7 +121,7 @@ group: "participate"
 
 但可写的来源层级按码而异：例如 `directed_by` / `written_by` 只接 work|content_unit，`arranged_by` 只接 work|expression，`narrated_by` 只接 expression|release。以 `GET /api/catalog/definitions` 的 `relations.<code>.source_kinds` 为准，连错层级会被 `invalid_endpoints` 拒绝。
 
-需要新关系码时，走后台 Definitions 的草稿 → 影响面校验 → 发布。
+需要新关系码时，走后台 Definitions 的影响检查 → 带当前 expected_etag 保存生效配置。
 
 ### 4.2 多边区分
 
@@ -152,8 +152,8 @@ group: "participate"
 - 实体写明 `original_language`（如 `ja` / `zh-CN` / `en-US`）
 - `translations` 是按 locale 分组的对象，每个语种含 `title` / `summary` / `aliases`；原语言题名归它自己的语种行，不塞进实体级别的别名
 - 展示回退链：请求语言 → `en-US` → `original_language` → 基础字段（只影响展示，不回写数据）
-- 动态术语（类型、字段、词表项、关系码）的多语言名称来自 definitions，前端不硬编码；UI 文案走四个语种字典 `frontend/src/messages/{zh-CN,en-US,zh-TW,ja-JP}.json`
-- **定义侧的名称是四语硬约束**：类型、字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案、货架与外部权威库的 `names` 都要带 `zh-CN` / `zh-TW` / `en-US` 与 `ja` 或 `ja-JP`
+- 动态术语（kind、字段、词表项、关系码）的多语言名称来自 definitions，前端不硬编码；UI 文案走四个语种字典 `frontend/src/messages/{zh-CN,en-US,zh-TW,ja-JP}.json`
+- **定义侧的名称是四语硬约束**：字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案、货架与外部权威库的 `names` 都要带 `zh-CN` / `zh-TW` / `en-US` 与 `ja` 或 `ja-JP`
 - 缺语种写入返回 `400 four_locale_names_required`；实体自身的 `translations` 仍只要求发布时至少一条
 
 ### 6.2 修订与证据
@@ -167,7 +167,7 @@ group: "participate"
 
 ### 7.1 纯净题名
 
-- [ ] 作品题名是否混入 `TV(动画)?`、`剧场版`、`OVA`、`OAD`、`第[0-9]季`、`Season`、`Vol`、`1080P`、`4K`、`UHD`、`Hi-Res`、`FLAC`、`初回限定`、`字幕组`？命中就剥离到发行版与载体。
+- [ ] 对照正式题名和作品范围：季数、剧场版、Vol 等是身份信息还是后加规格？仅将后加的载体、编码、版别、压制组规格移到对应层级，保留来源支持的正式题名。
 
 ::: tip
 这是审查口径，服务端不做自动拦截。

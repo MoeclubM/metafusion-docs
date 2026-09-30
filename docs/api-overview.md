@@ -100,13 +100,14 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 能力 | 真实端点 | 认证 |
 |---|---|---|
 | 动态定义 | `GET /api/catalog/definitions` | 开放 |
-| 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `type` / `types` / `status` / 关联 id / `field` + `value` / `tags` / `limit` / `offset`） | 开放 |
+| 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `status` / 关联 id / `field` + `value` / `tags` / `limit` / `offset`） | 开放 |
 | 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
+| 身份与统一关系读取 | `GET /api/catalog/entities/:id/identity`、`/links`；`POST /api/catalog/entities/identity` 只读批量身份解析 | 按实体可见性过滤；见 [实体查询与详情](/api-entities) |
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
 | 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；权限见下文 |
 | 关系写入 | `POST /api/catalog/relations`、`PUT\|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役）、`POST /api/catalog/entities/:id/unpublish`（下架：`published → draft`） | `catalog.lifecycle.manage` |
-| 发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个 Release） | 开放 |
+| 实体与发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个实体，Release/Medium 附内容树） | 开放 |
 | 标签聚合 | `GET /api/catalog/tags`（按已发布实体的 `attributes.tags` 统计频次） | 开放 |
 | 货架 | `GET /api/catalog/shelves`、`GET /api/catalog/shelves/feed` | 开放 |
 | 外部权威库 | `GET /api/catalog/external-databases` | 开放 |

@@ -24,7 +24,7 @@ MetaFusion 采用基于实体责任骨架与动态目录定义的纯净架构，
 | Medium | 同发行内的承载单元，可嵌套 | CD、MV BD、纸质册、黑胶 |
 | Track | 同载体内的收录位置，可嵌套 | A1、光盘菜单、章节位置 |
 
-类型可以组合；简单作品无需凑齐全部层级。`position` 为非负排序整数，`number` 为原始印刷编号。
+字段与场景可以组合；简单作品无需凑齐全部层级。实体不再声明业务 `types`，描述性分类使用开放标签。`position` 为非负排序整数，`number` 为原始印刷编号。
 
 Expression 的 `work_id`、Medium 的 `release_id` 和 Track 的 `medium_id` 为固定所属关系，普通编辑不可跨域移动。目录父子必须同域且无环。
 
@@ -40,7 +40,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 `locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：
 
-- 实体写入时先按拥有者 kind/types 匹配 `definitions.schemes` 同槽位场景。
+- 实体写入时先按拥有者 kind 匹配 `definitions.schemes` 同槽位场景。
 - Track 的定位和收录附加字段还可按所属 Medium 的 `format` 匹配 `medium_formats`（空为不限）。
 - 命中方案后取并集 fields 收敛可用子字段与必填，`relative_to` 锚点置前；无匹配时回退全局组。
 - 改变 Medium 格式会回放现有 Track，不允许留下与新方案冲突的定位。
@@ -58,9 +58,9 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ### 动态定义与结构声明
 
-后台 GUI 可新增和编辑业务类型、字段、词表、模板与实体关系。
+后台 GUI 可新增和编辑字段、词表、模板、场景方案与实体关系。实体属性的可写层级由字段 `applicable_kinds` 决定。
 
-`definitions.structure` 用于向前端描述固定归属外键和收录入口。非空结构定义必须保留数据库实际支持的字段、目标 kind、必填性、Release `subjects` 与 Track `contents`，否则草稿保存返回 `fixed_structure_mismatch`。
+`definitions.structure` 用于向前端描述固定归属外键和收录入口。非空结构定义必须保留数据库实际支持的字段、目标 kind、必填性、Release `subjects` 与 Track `contents`，否则配置保存返回 `fixed_structure_mismatch`。
 
 扩展骨架外键或收录容器需要数据库与服务端改动。
 
@@ -77,8 +77,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 前端路由
 
-- 作品、发行版、载体有专用详情路由 `/works/[id]`、`/releases/[id]`、`/mediums/[id]`。
-- 通用兜底与编辑入口为 `/catalog/[id]`（未知 kind 与 `?edit=1` 直达编辑）。
+- 八种实体的规范详情地址均为 `/catalog/[id]`，kind 只选择内容布局；`?edit=1` 直达编辑。
 - 探索为 `/explore`，对比为 `/compare`。
 - 创建入口为 `/new`，不带层级时落到编目枢纽 `/contribute`。
 - **管理后台为 `/admin`**，只管理元数据目录：实体、定义、货架、外部库、导入审核。账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」。
@@ -89,8 +88,8 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 七个编目例子
 
-1. **写真**：创建摄影师 Agent、写真 Work，添加 `photobook` 和 `personal` 类型；以作者自述为来源。没有文件、出版社或发行记录也能发布条目。
-2. **独立游戏**：游戏 Work 组合 `indie_game` 与 `visual_novel`；路线是 ContentUnit；有创作差异的正文版本是 Expression；不同平台公开发布是 Release。安装包编码与压缩方式属于文件模块。
+1. **写真**：创建摄影师 Agent、写真 Work，按来源添加摄影与个人创作标签；以作者自述为来源。没有文件、出版社或发行记录也能发布条目。
+2. **独立游戏**：游戏 Work 用开放标签描述独立游戏与视觉小说特征；路线是 ContentUnit；有创作差异的正文版本是 Expression；不同平台公开发布是 Release。安装包编码与压缩方式属于文件模块。
 3. **翻唱与单曲**：原歌曲 Work 下创建翻唱 Expression，关联演唱者和原表达。单曲发行、专辑、精选集的 Track 可以复用同一 Expression。实质改编且形成新作品身份时另建 Work。
 4. **普通／BD 限定／特装专辑**：一个专辑 Work、三个 Release。普通版含 CD；限定版含 CD 与 BD；特装版再记录盒内附件。CD 收录歌曲录音，BD 收录演唱会或 MV 表达，发行 subjects 同时声明这些 Work。
    - 立牌写 `attachments`；店铺赠品写 `store_bonuses`，不能误建为盒内 Medium。
@@ -102,23 +101,23 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 ## 通过后台配置
 
-管理员打开目录控制台 `/admin`（旧 `/catalog/admin` 已重定向），Definitions 页签覆盖 types / fields / vocabularies / relations / templates / schemes：
+管理员打开目录控制台 `/admin`（旧 `/catalog/admin` 已重定向），Definitions 页签覆盖 fields / vocabularies / relations / templates / schemes / structure：
 
 1. 添加稳定代码与四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`），选择固定实体层级。
-2. 在共享字段库定义文本、多语言、数字、日期、布尔、网址、词表、实体引用、列表或字段组；在类型与关系中引用同一个字段。
-3. 定义关系的正反向名称、端点层级与类型、上下文、基数、对称性、无环和显示分组。
+2. 在共享字段库定义文本、多语言、数字、日期、布尔、网址、词表、实体引用、列表或字段组；以 applicable_kinds 声明实体适用层级，在关系和场景中复用字段。
+3. 定义关系的正反向名称、端点层级、上下文、基数、对称性、无环和显示分组。
 4. 定义模板分区、字段顺序、列表列、目录模式与关系分区顺序（`relation_groups`）。
-5. 在 schemes 页签按槽位声明场景子集：kinds/types 白名单、Track 所属载体的 `medium_formats`、可用子字段、必填子集，以及仅 locator 可用的 `require_range`。黑胶示例 `vinyl_track_locator` 默认关闭，可在后台按需启用或删除。
+5. 在 schemes 页签按槽位声明场景子集：kinds 白名单、Track 所属载体的 `medium_formats`、可用子字段、必填子集，以及仅 locator 可用的 `require_range`。黑胶示例 `vinyl_track_locator` 默认关闭，可在后台按需启用或删除。
 6. 在 `role` 词表中用“作为附赠内容展示”控制发行页的附赠分组；新增用途词项不需要改前端代码。
-7. 填写编辑说明与来源，保存草稿，检查既有数据影响，然后发布。冲突或过期基础版本会阻止发布。
+7. 检查既有数据影响，填写编辑说明与来源，带当前 expected_etag 保存完整配置。服务端事务内再次检查；过期 ETag 返回 409 version_conflict。定义没有历史版本、服务端草稿或回滚入口。
 
-正在使用的定义请停用，不要删除。停用值可以保留并继续显示，不能在新数据中重新使用。
+新增或收窄定义前执行影响检查。停用值可保留显示，不能作为新增值使用；删除是否允许以实际既有数据影响为准。
 
-发布后表单和详情读取新的定义；无专用模板的类型使用通用展示。
+保存后表单和详情读取新的定义；无专用模板的实体使用通用展示。
 
-名称缺语种会在保存草稿时被拒：`400 four_locale_names_required: <缺失语种>`。
+名称缺语种会在保存配置时被拒：`400 four_locale_names_required: <缺失语种>`。
 
-校验只覆盖启用中的类型 / 字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案，以及货架与外部权威库的 `names`；停用条目与空 `group_names` 不参与校验。
+校验只覆盖启用中的字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案，以及货架与外部权威库的 `names`；停用条目与空 `group_names` 不参与校验。
 
 ## 写入与审核
 
@@ -133,7 +132,6 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
     "title": "城市光影",
     "original_language": "zh-CN",
     "translations": {"zh-CN": {"title": "城市光影", "summary": "作者独立摄影作品", "aliases": []}},
-    "types": ["photobook", "personal"],
     "status": "draft",
     "attributes": {},
     "external_ids": {},
@@ -213,11 +211,11 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 清单里只有上面的 id。账号与令牌由 `metafusion-auth` 承担，但不作为能力项下发——目录侧只验签，不保存账号数据。
 
-需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`（非 200 按不存在处理）；合并过的 id 用 `GET /api/catalog/entities/{id}/resolve` 取当前身份，不要假定 ID 永久有效。
+需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`；仅 404 表示不存在或不可见。401/403 是凭据或权限问题，429 应按 Retry-After 退避，5xx 是服务故障。合并后的跨服务聚合用 `GET /api/catalog/entities/{id}/identity` 取 canonical_id 与完整 aliases；只需要存活实体可用 `/resolve`。
 
 Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响。其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。
 
-其余导入器、AI 与 OpenSearch 适配器仍属未实现能力；不能仅添加目录类型就获得新的执行能力。
+独立 importer CLI 的来源映射与 AI 增强仍属未完成能力；OpenSearch 已是可选候选索引，由 PostgreSQL 做最终过滤和可见性回读。增加目录字段不会自动获得执行能力。
 
 ::: tip 站内通知
 站内通知已实现，端点在目录服务上，见 [统一 API 概览](/api-overview)。

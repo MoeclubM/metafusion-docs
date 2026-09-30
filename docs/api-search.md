@@ -13,10 +13,11 @@ group: "api"
 
 ## 匹配口径
 
-`q` 在服务端编译成一次子串匹配：
+未配置或不能使用 OpenSearch 时，`q` 回退到 PostgreSQL 的子串匹配（其中 `%` / `_` 按字面转义）：
 
 ```sql
 title ILIKE '%<q>%' OR (document->'translations')::text ILIKE '%<q>%'
+OR (document->'external_ids')::text ILIKE '%<q>%'
 ```
 
 - 大小写不敏感的子串匹配（不是分词检索）：`攻壳` 能命中 `攻壳机动队`
@@ -24,7 +25,7 @@ title ILIKE '%<q>%' OR (document->'translations')::text ILIKE '%<q>%'
 - 译文侧把整段 JSON 转文本匹配，数据量大时是顺序扫描
 
 ::: warning 当前没有按相关度排序的全文检索
-「按语言精确分词、按相关度排序的全文检索」当前**尚未实现**，`q` 保留的是「能搜到」的降级语义。
+PostgreSQL 回退路径是子串检索，不提供分词相关度排序。配置并就绪的 OpenSearch 可提供候选相关度排序；最终可见性和过滤仍由 PostgreSQL 决定。
 :::
 
 ## 接口
@@ -41,7 +42,7 @@ GET /api/catalog/entities?q=VIZL&kind=release&limit=10
 |---|---|
 | `q` | 关键词（标题与译文的子串匹配） |
 | `kind` / `kinds` | `agent` \| `collection` \| `work` \| `content_unit` \| `expression` \| `release` \| `medium` \| `track`（`kinds` 可多值） |
-| `type` / `types` / `status` | 动态类型与状态过滤 |
+| `status` | 状态过滤；实体业务 types 及其筛选已移除 |
 | `tags` | 标签过滤（多值，命中任一） |
 | `work_id` / `content_unit_id` / `release_id` / `medium_id` / `parent_id` | 关联过滤 |
 | `field` + `value` | 按属性字段精确过滤（支持点分路径） |
@@ -77,12 +78,12 @@ curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent:
 
 ## 搜索引擎现状
 
-检索当前**全部由 PostgreSQL 承担**，不需要额外部署搜索引擎。
+PostgreSQL 是事实来源且可以独立运行；OpenSearch 是可选候选索引。
 
 - 标题走 `to_tsvector('simple', title)` 的 GIN 索引，属性走 `document` 的 JSONB 路径索引
-- 标签、动态类型各有函数索引支撑
+- 标签和属性使用当前数据库索引；实体业务类型及其索引已移除
 
-OpenSearch 2.x **已在编排里**（`--profile search`），作为数据量上到亿级时的倒排与多语言分词层预留，**尚未接线**：开启它不会改变任何检索行为。
+OpenSearch 2.x 已在编排里（`--profile search`）。配置 `OPENSEARCH_URL` 后服务启动索引器；关键词查询在允许的候选窗口内使用索引结果，PostgreSQL 回读实体、检查权限并计算最终 total。索引不可用、无命中、候选超界或结构/字段查询不适合走索引时回退 PostgreSQL；索引最终过滤后为空也回退。开 profile 仍须确保 URL 和索引就绪。
 
 ## 与前端联动
 

@@ -11,7 +11,7 @@ group: "api"
 
 八类 kind 共用这两个端点：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`。
 按关联 id 过滤（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id`）
-或按 `kind` / `types` 过滤拿到子集；关系数据经 `/relations`、`/occurrences` 端点取。
+或按 `kind` / `tags` 过滤拿到子集；关系数据经 `/relations`、`/occurrences` 端点取。
 
 ## 列表与过滤
 
@@ -26,7 +26,6 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 |---|---|
 | `kind` | 单个 kind 过滤 |
 | `kinds` | 多值 kind（重复出现或逗号分隔，命中任一即返回） |
-| `type` / `types` | 动态业务类型（`document.types`）单值 / 多值过滤 |
 | `status` | 状态过滤（`draft` / `pending_review` / `published` …）；可见性另见 [API 概览](/api-overview) |
 | `q` | 标题与译文文本的子串匹配，见 [全文检索](/api-search) |
 | `field` + `value` | 按 `document` 内属性字段精确过滤（支持点分路径，见下） |
@@ -36,6 +35,7 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `medium_id` | 该载体下的曲目 |
 | `parent_id` | 同层子节点（内容单元 / 载体 / 曲目） |
 | `tags` | 多值标签过滤：重复出现或逗号分隔，命中任一即返回；服务端走 JSONB 包含匹配 |
+| `sort` / `order` / `locale` | sort 可取 updated_at / created_at / title，order 为 asc / desc；题名排序可指定 locale，未知排序/方向返回 invalid_sort / invalid_order |
 | `limit` / `offset` | 分页；`limit` 默认 50、上限 100，越界静默按 50 |
 
 响应为 `{ "items": [...], "total": <真实 COUNT> }`。
@@ -47,7 +47,7 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 关系编辑器的对端选择器就是用它收敛候选：
 
 ```http
-GET /api/catalog/entities?kinds=work,collection&types=album,song&limit=24
+GET /api/catalog/entities?kinds=work,collection&tags=专辑,歌曲&limit=24
 ```
 
 ### 嵌套字段筛选
@@ -88,7 +88,9 @@ GET /api/catalog/entities?kind=release&field=subject_attributes.seq&value=1
 ```http
 GET /api/catalog/entities/:id            # 通用实体详情（含 version，写入时要用）
 GET /api/catalog/entities/:id/resolve    # 合并后跟随 redirect_id 取到保留实体
+GET /api/catalog/entities/:id/identity   # 存活实体与完整历史别名
 GET /api/catalog/entities/:id/relations  # 关系边 + 两端实体表
+GET /api/catalog/entities/:id/links      # 固定结构与语义关系的统一只读投影
 GET /api/catalog/entities/:id/occurrences # 该实体被哪些发行版收录
 GET /api/catalog/entities/:id/revisions  # 修订历史
 ```
@@ -101,8 +103,20 @@ curl "/api/catalog/entities/<id>/relations" -H "User-Agent: MyApp/1.0 (you@examp
 - `/relations` 的响应是 `{ items, entities, subject_id }`：`items` 是关系边，`entities` 是按 id 索引的两端实体（含被查询实体自身），`subject_id` 标出「哪个是自己」
 - 客户端据此直接渲染「谁→谁」，不必再逐条取实体
 - `/occurrences` 按 kind 收敛：`expression` 返回自身收录，`content_unit` / `work` 返回其表达被收录的情况
-- `/revisions` 按目标实体逐行过滤可见性；关系修订的 `target_id` 是关系 id 本身
-- **没有独立图谱端点**：需要 `{ nodes, links }` 拓扑就用 `/relations` 的返回在客户端构图
+- `/revisions` 按目标实体逐行过滤可见性；Track 历史快照中的收录也按表达当前可见性裁剪，原始事实仍保留在库中。关系修订的 `target_id` 是关系 id 本身
+- `/links` 是固定结构与语义关系的统一只读投影；语义关系仍经 `/relations` 写入，不复制结构边。
+
+### 身份解析和统一关系读取
+
+`GET /api/catalog/entities/:id/identity` 返回 `{canonical_id, aliases, entity, complete}`。aliases 包含反向合并分支和多跳链；只有 `complete=true` 才能当作全集用于评论、收藏或文件聚合。终点不存在/不可见返回 404，查询失败返回错误，不把部分结果伪装成完整身份。
+
+`POST /api/catalog/entities/identity` 是只读批量解析，请求 `{ids:[...]}`，1–500 项，返回按请求 ID 索引的 `items` 与 `missing`。不可见/不存在进入 missing，数据库故障使整批失败。
+
+`GET /api/catalog/entities/:id/links?limit=50&offset=0` 返回 `{subject_id, definition_etag, items, entities, limit, offset, has_more}`。每项有 `key`、`rule_code`、`class`、`direction`、两端 ID、排序和可选的角色/定位/属性。规则从 definitions.relationship_rules 读取。固定结构项只能通过拥有者实体的结构字段、subjects 或 contents 编辑；语义关系用既有 relations 写入口。
+
+统一 links 不是第二份事实存储。需要更多页时按 has_more 继续取数；404 是不存在/不可见，401/403、429、5xx 要分别处理。
+
+Track 的公开读取会过滤不可见表达的收录；普通编辑者整实体 PUT 删除或改写被过滤的历史引用会返回 403 forbidden，需有权查看完整事实的创建者或审核者处理。不要把裁剪后的公开视图直接当作完整备份。
 
 ## 批量表达详情
 
@@ -126,12 +140,12 @@ POST /api/catalog/expressions/details
 | `GET /api/catalog/shelves` | 已启用的虚拟货架规则 |
 | `GET /api/catalog/shelves/feed` | 每个货架加求值后的条目 |
 | `GET /api/catalog/external-databases` | 可用的外部权威库定义（`external_ids` 的合法键） |
-| `GET /api/catalog/compare?ids=a,b` | 2–6 个 Release 的字段与曲目对比（只对比 `comparable` 字段） |
+| `GET /api/catalog/compare?ids=a,b` | 2–6 个可见实体的字段对比；Release/Medium 附完整载体/轨目树，属性只对比 comparable 字段 |
 
-- `definitions` 返回 `types` / `fields` / `vocabularies` / `relations` / `templates`；kind 名均为四语 map：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`
+- `definitions` 返回 `fields` / `vocabularies` / `relations` / `templates` / `schemes` / `structure`，以及当前 `etag`、固定 `kinds` 和只读 `relationship_rules`；kind 名均为四语 map：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`
 - `tags` 支持 `q` 过滤，`limit` 默认 200 上限 500
 - `shelves/feed` 的 `per_shelf` 默认 12、上限 100；登录用户按其首页偏好合并、重排与隐藏，每条 `shelf` 带 `source`（`system` / `custom`）
-- `compare` 的 `ids` 少于 2 或多于 6 返回 `compare_requires_two_to_six`，非 Release 实体返回 `invalid_kind`
+- compare 的 ids 少于 2 或多于 6 返回 compare_requires_two_to_six；响应每项使用 entity 字段，Release/Medium 的载体树在 children 内，每项为 {medium, tracks}，不使用旧 release 键。
 
 ## 用户贡献流
 

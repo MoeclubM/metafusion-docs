@@ -188,7 +188,6 @@ group: "api"
     "medium_id": "<Medium UUID>",
     "title": "A1",
     "translations": { "zh-CN": { "title": "A1" } },
-    "types": ["track"],
     "status": "published",
     "attributes": { "role": "side", "duration": 291 },
     "contents": [{ "expression_id": "<Expression UUID>", "position": 0, "locator": {} }]
@@ -320,14 +319,14 @@ if hits["total"]:
 # 2. Work：只放创作层事实
 work = create({
     "kind": "work", "title": "城市光影", "original_language": "zh-CN",
-    "translations": tr("城市光影", "City Lights"), "types": ["photobook"],
+    "translations": tr("城市光影", "City Lights"),
     "status": "published", "attributes": {"tags": ["摄影"]},
 }, "demo-work")
 
 # 3. Expression：可被多个发行复用的那一层
 expr = create({
     "kind": "expression", "work_id": work["id"], "title": "初版正文",
-    "translations": tr("初版正文", "First edition"), "types": ["expression"],
+    "translations": tr("初版正文", "First edition"),
     "status": "published", "attributes": {"language": "zh-CN"},
 }, "demo-expr")
 
@@ -335,7 +334,7 @@ expr = create({
 release = create({
     "kind": "release", "title": "城市光影（初版精装）",
     "translations": tr("城市光影（初版精装）", "City Lights (first edition)"),
-    "types": ["release"], "status": "published",
+    "status": "published",
     "attributes": {"edition_date": "2024-05-01", "edition_type": "standard",
                    "country": "CN", "catalog_number": "DEMO-0001"},
     "subjects": [{"work_id": work["id"], "role": "primary", "position": 0}],
@@ -343,13 +342,13 @@ release = create({
 
 medium = create({
     "kind": "medium", "release_id": release["id"], "title": "纸质册",
-    "translations": tr("纸质册", "Printed volume"), "types": ["medium"],
+    "translations": tr("纸质册", "Printed volume"),
     "status": "published", "attributes": {"format": "paper"},
 }, "demo-medium")
 
 track = create({
     "kind": "track", "medium_id": medium["id"], "title": "正文",
-    "translations": tr("正文", "Body"), "types": ["track"],
+    "translations": tr("正文", "Body"),
     "status": "published", "attributes": {"role": "primary"},
     "contents": [{"expression_id": expr["id"], "position": 0, "locator": {}}],
 }, "demo-track")
@@ -357,7 +356,7 @@ track = create({
 # 5. 关系：两端实体已存在后再织网
 agent = create({
     "kind": "agent", "title": "示例摄影师",
-    "translations": tr("示例摄影师", "Example Photographer"), "types": ["person"],
+    "translations": tr("示例摄影师", "Example Photographer"),
     "status": "published",
 }, "demo-agent")
 
@@ -414,29 +413,29 @@ if (hits.total > 0) throw new Error("已有候选 " + hits.items[0].id + "，先
 // 2–4. 按依赖顺序建链：Work → Expression → Release → Medium → Track
 const work = await create(
   { kind: "work", title: "城市光影", original_language: "zh-CN", translations: tr("城市光影", "City Lights"),
-    types: ["photobook"], status: "published", attributes: { tags: ["摄影"] } },
+    status: "published", attributes: { tags: ["摄影"] } },
   "demo-work"
 );
 const expr = await create(
   { kind: "expression", work_id: work.id, title: "初版正文", translations: tr("初版正文", "First edition"),
-    types: ["expression"], status: "published" },
+    status: "published" },
   "demo-expr"
 );
 const release = await create(
   { kind: "release", title: "城市光影（初版精装）", translations: tr("城市光影（初版精装）", "City Lights (first edition)"),
-    types: ["release"], status: "published",
+    status: "published",
     attributes: { edition_date: "2024-05-01", catalog_number: "DEMO-0001" },
     subjects: [{ work_id: work.id, role: "primary", position: 0 }] },
   "demo-release"
 );
 const medium = await create(
   { kind: "medium", release_id: release.id, title: "纸质册", translations: tr("纸质册", "Printed volume"),
-    types: ["medium"], status: "published", attributes: { format: "paper" } },
+    status: "published", attributes: { format: "paper" } },
   "demo-medium"
 );
 const track = await create(
   { kind: "track", medium_id: medium.id, title: "正文", translations: tr("正文", "Body"),
-    types: ["track"], status: "published",
+    status: "published",
     contents: [{ expression_id: expr.id, position: 0, locator: {} }] },
   "demo-track"
 );
@@ -444,7 +443,7 @@ const track = await create(
 // 5. 关系：两端实体已存在后再织网（关系码以 GET /api/catalog/definitions 为准）
 const agent = await create(
   { kind: "agent", title: "示例摄影师", translations: tr("示例摄影师", "Example Photographer"),
-    types: ["person"], status: "published" },
+    status: "published" },
   "demo-agent"
 );
 await call("POST", "/catalog/relations", {
@@ -478,40 +477,40 @@ curl -s "$BASE/catalog/entities?q=城市光影&kind=work&limit=5" | jq '.total'
 WORK=$(jq -n --arg note "$NOTE" --argjson src "$SRC" '{
   entity: { kind: "work", title: "城市光影", original_language: "zh-CN",
             translations: { "zh-CN": { title: "城市光影" }, "en-US": { title: "City Lights" } },
-            types: ["photobook"], status: "published", attributes: { tags: ["摄影"] } },
+            status: "published", attributes: { tags: ["摄影"] } },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-work)
 
 # 3. Expression
 EXPR=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" '{
   entity: { kind: "expression", work_id: $work, title: "初版正文",
             translations: { "zh-CN": { title: "初版正文" } },
-            types: ["expression"], status: "published" },
+            status: "published" },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-expr)
 
 # 4. Release（subjects 声明收录的 Work）→ Medium → Track
 RELEASE=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" '{
   entity: { kind: "release", title: "城市光影（初版精装）",
-            translations: { "zh-CN": { title: "城市光影（初版精装）" } }, types: ["release"],
+            translations: { "zh-CN": { title: "城市光影（初版精装）" } },
             status: "published", attributes: { edition_date: "2024-05-01", catalog_number: "DEMO-0001" },
             subjects: [{ work_id: $work, role: "primary", position: 0 }] },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-release)
 
 MEDIUM=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg release "$RELEASE" '{
   entity: { kind: "medium", release_id: $release, title: "纸质册",
-            translations: { "zh-CN": { title: "纸质册" } }, types: ["medium"],
+            translations: { "zh-CN": { title: "纸质册" } },
             status: "published", attributes: { format: "paper" } },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-medium)
 
 TRACK=$(jq -n --arg note "$NOTE" --argjson src "$SRC" --arg medium "$MEDIUM" --arg expr "$EXPR" '{
   entity: { kind: "track", medium_id: $medium, title: "正文",
-            translations: { "zh-CN": { title: "正文" } }, types: ["track"], status: "published",
+            translations: { "zh-CN": { title: "正文" } }, status: "published",
             contents: [{ expression_id: $expr, position: 0, locator: {} }] },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-track)
 
 # 5. 关系：两端实体已存在
 AGENT=$(jq -n --arg note "$NOTE" --argjson src "$SRC" '{
   entity: { kind: "agent", title: "示例摄影师", translations: { "zh-CN": { title: "示例摄影师" } },
-            types: ["person"], status: "published" },
+            status: "published" },
   expected_version: 0, edit_note: $note, sources: $src }' | mfpost /catalog/entities demo-agent)
 
 jq -n --arg note "$NOTE" --argjson src "$SRC" --arg work "$WORK" --arg agent "$AGENT" '{
@@ -541,7 +540,7 @@ curl -s "$BASE/catalog/entities/$WORK/relations" | jq '.items | length'
 | `400 use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 停用/合并改走 `POST /api/catalog/entities/:id/lifecycle`；退回 `draft` 改走 `POST /api/catalog/entities/:id/unpublish`（需 `catalog.lifecycle.manage`） |
 | `400 invalid_status` | 状态机不允许这个动作：下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体 | 先读回当前 `status`：已是 `draft` 就不必下架；`deleted` / `merged` 要恢复只能新建 |
 | `400 relation_cycle` / `invalid_endpoints` / `duplicate_relation` | 无环关系成环、两端 kind 不允许（含自环）、重复边 | 按 definitions 的端点与无环声明改方向；先删冲突旧边 |
-| `400 invalid_term` / `invalid_type` | 词表值或业务类型不在定义内 | 用 definitions 的 `terms` 与 `types`，不要按字面猜 |
+| `400 invalid_term` / `unknown_field` | 词表值或实体字段不在适用定义内 | 用 definitions 的 terms 与 applicable_kinds，不要按字面猜 |
 | `401 authentication_required` / `403 forbidden` | 令牌无效，或缺权限码、不是该条目的可写者 | 重新登录；发布、合并与下架归生命周期权限 |
 | `404 not_found` | 不存在，或对调用者不可见 | 未发布条目只对创建者与持权限者可见 |
 | `409 version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |

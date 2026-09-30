@@ -22,7 +22,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 | 事实 | 来源 |
 | --- | --- |
 | 端点、请求体模式、响应模式 | `GET /api/openapi.json`（OpenAPI 3.0.3，只覆盖目录服务） |
-| 发布态定义：types / fields / vocabularies / relations / templates / schemes / structure，以及八类 kind 的多语言名 `kinds`（每项名称是四语 map） | `GET /api/catalog/definitions` |
+| 当前生效定义：fields / vocabularies / relations / templates / schemes / structure，以及 etag 和只读 relationship_rules，以及八类 kind 的多语言名 `kinds`（每项名称是四语 map） | `GET /api/catalog/definitions` |
 | 实际能力 | 目标实例的响应；文档与响应冲突时以响应为准，暂停写入并记录差异 |
 
 八类 kind 是固定的骨架：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`。`kind` 参数取具体 kind，没有 `all`。
@@ -224,9 +224,9 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 服务端校验：
 
 - 关系码必须存在且 enabled。
-- 两端 kind 在 `source_kinds` / `target_kinds` 内；两端业务类型在 `source_types` / `target_types` 白名单内。
+- 两端 kind 在 `source_kinds` / `target_kinds` 内；字段适用范围看 applicable_kinds，不存在实体业务类型白名单。
 - 属性键属于该关系声明的 `fields`。
-- 不重复（同端点同类型同属性同 position）、不超基数。
+- 不重复（同端点同关系类型同属性）、不超基数；position 仅表示排序，不能靠不同 position 重复建边。
 - 声明 `acyclic` 的关系会做环路检测。
 - 同一条边用不同属性区分（如不同 `credit_role` / `language`）是合法的。
 
@@ -316,7 +316,7 @@ POST /api/catalog/entities/:id/unpublish
 | 400 | `parent_required` | 缺结构归属：`content_unit` / `expression` 缺 `work_id`、`medium` 缺 `release_id`、`track` 缺 `medium_id` | 补归属，或改到正确的层级提交 |
 | 400 | `undeclared_release_subject` | Track 收录的表达所属 Work 没有在该发行的 `subjects` 中声明 | 在该发行上补 `subjects`，再重放 Track |
 | 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系语义校验失败：码不存在或未启用、端点 kind 或类型不允许（自环也走这里）、重复边、超基数、成环 | 只用 definitions 中 enabled 的码与允许的端点；自环一律不支持；先删冲突旧边再建 |
-| 400 | `invalid_term` / `invalid_type` / `invalid_position` | 词表值、业务类型或排序值不在允许集合内 | 用 definitions 里对应字段的 `vocabulary.terms` 与 `types` |
+| 400 | `invalid_term` / `invalid_position` | 词表值或排序值不在允许集合内 | 用 definitions 里对应字段的 vocabulary.terms；实体字段以 applicable_kinds 为准 |
 | 400 | `invalid_status` | 状态值不在 `draft` / `pending_review` / `published` / `deleted` / `merged` 之内；或状态机不允许该动作（下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体） | 状态值按五档写；动作不合法先 `GET` 读回当前 `status`：已是 `draft` 不必下架，`deleted` / `merged` 要恢复只能新建 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段码不存在 | 从 definitions 取字段集与 `searchable`，不要按名称猜 |
 | 401 | `authentication_required` | 需要登录的端点没有有效令牌（会话 / OAuth 令牌缺失或验签失败） | 重新登录或换用 OAuth 访问令牌 |

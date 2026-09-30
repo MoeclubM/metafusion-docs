@@ -66,7 +66,7 @@ A：限流按 IP 计数、不区分是否登录，实际共有三层：
 ## 部署与运维
 
 **Q：需要额外部署搜索引擎或缓存吗？**  
-A：当前不需要——检索是 PostgreSQL 上的一次子串匹配（`title ILIKE` 加译文 JSON 文本匹配），限流计数在服务进程内存里。两者都为数据量上到亿级时预留：OpenSearch 用 `--profile search` 起（编排已就绪，尚未接线，开启它不会改变检索行为），Redis 也已编排备用。
+A：基础运行只需 PostgreSQL。OpenSearch 已接入为可选关键词候选索引：用 `--profile search` 启动并配置 OPENSEARCH_URL，索引就绪后参与检索，数据库仍负责最终过滤、可见性与回读；不可用时回退 PostgreSQL。限流计数仍在进程内，Redis 尚未接入共享计数。见[检索](/api-search)。
 
 **Q：文档站如何访问与本地预览？**  
 A：线上环境可通过 `/docs/` 直接访问（由网关自动代理，容器从本仓库构建）；本地预览在本仓库根目录运行 `npm install && npm run dev`。

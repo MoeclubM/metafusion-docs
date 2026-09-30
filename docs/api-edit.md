@@ -62,7 +62,6 @@ POST /api/catalog/entities
     "title": "攻壳机动队",
     "original_language": "ja",
     "translations": { "zh-CN": { "title": "攻壳机动队", "summary": "..." } },
-    "types": ["animation"],
     "attributes": { "tags": ["动画", "电影"] },
     "external_ids": { "bangumi": "265" },
     "pictures": [{ "url": "https://example.com/cover.jpg", "source": { "kind": "url", "citation": "官方海报", "url": "https://example.com" } }],
@@ -283,12 +282,12 @@ GET /api/catalog/entities/:id/revisions
 | `GET /api/exchange/entities/:id` | 导出单个实体快照（JSON），供另一实例导入 |
 | `POST /api/exchange/proposals` | 提交外部编辑提案，请求体与实体写入相同 |
 
-- 导出按调用者身份判可见性（匿名只看已发布），不存在或不可见都是 `404 not_found`
+- 导出按调用者身份判可见性（匿名只看已发布），不存在或不可见都是 `404 not_found`；数据库或服务故障返回错误，不能当作条目缺失。Track 收录按表达可见性裁剪，不能把公开导出当作完整历史备份。
 - 提案由服务端强制落 `pending_review`，不能绕过审核直接发布
 
 ## 动态定义管理
 
-动态定义（类型、字段、词表、关系、模板）由管理员维护，全部需要 `catalog.definitions.manage`：
+动态定义（字段、词表、关系、模板、场景与结构显示名）由管理员维护，全部需要 `catalog.definitions.manage`：
 
 | 端点 | 作用 |
 |---|---|
@@ -306,12 +305,12 @@ GET /api/catalog/entities/:id/revisions
 
 四语约束作用于定义文档里启用中的条目：
 
-- 类型（`types`）、字段（`fields`，含嵌套子字段；字段单位 `unit` 只在声明了单位时校验）
+- 字段（`fields`，含 `applicable_kinds` 与嵌套子字段；字段单位 `unit` 只在声明了单位时校验）
 - 词表与词项（`vocabularies` / `terms`）、关系（`relations` 的 `names` / `reverse_names` / `group_names`）
 - 模板与模板分区（`templates` / `sections`）、场景方案（`schemes`）
 - 货架 `names`（`/api/admin/shelves`）与外部权威库 `names`（`/api/admin/external-databases`）
 
-停用的类型 / 字段 / 词项 / 关系 / 场景不参与校验，存量两语条目可以原样保留；空 `group_names` 视为未声明。
+停用的字段 / 词项 / 关系 / 场景不参与校验，存量两语条目可以原样保留；空 `group_names` 视为未声明。
 
 判定只看「键在且非空」，不要求译文与英文不同：`CD`、`Spotify`、`ISBN` 这类专有名词四语同形是合法的。
 

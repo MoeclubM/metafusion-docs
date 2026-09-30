@@ -33,7 +33,7 @@ MetaFusion 是一个开放媒体资源站与元数据共建平台，专注于 AC
 
 MetaFusion 整体采用「元数据系统为主项目，周边外围子系统解耦自治」的架构矩阵。
 
-- **元数据核心系统 (metafusion-catalog)**：主项目，聚焦固定实体骨架（Agent, Collection, Work, ContentUnit, Expression, Release, Medium, Track）、动态定义引擎、关系图谱与修订历史。仅依赖 PostgreSQL 即可独立运行；检索走 PostgreSQL 子串匹配（OpenSearch 容器已随编排部署，但 Go 侧尚未接入），限流分两层：网关的 `limit_req` 与目录服务内部分重路由的进程内限流。
+- **元数据核心系统 (metafusion-catalog)**：主项目，聚焦固定实体骨架（Agent, Collection, Work, ContentUnit, Expression, Release, Medium, Track）、动态定义引擎、关系图谱与修订历史。仅依赖 PostgreSQL 即可独立运行；OpenSearch 已接入为可选候选索引，数据库负责最终过滤与可见性，并提供子串检索回退。限流分两层：网关的 limit_req 与目录服务部分重路由的进程内限流；策略可在目录后台配置。
 - **账号与身份认证中心 (metafusion-auth)**：独立身份服务，提供注册与登录、基于权限组与权限码的授权、OAuth 2.0 / OIDC 接入与实例准入设置。令牌签发包括 RS256 访问令牌 + 服务端会话，外部应用用的 `mfp_` 个人访问令牌也在这一侧签发与内省。
 - **资源存储与下载管理中枢 (metafusion-storage)**：原始文件归档与分发，支持本地对象模式与 S3 对象存储、sha256 内容寻址校验，并按绑定实体可见性授权下载（不做转码）。
 - **社区交流与论坛系统 (metafusion-community)**：独立讨论板块与主题回复，以及实体短评、收藏与互动记录。
