@@ -77,7 +77,7 @@ POST /api/catalog/entities
 - `translations` 是按 locale 分组的对象，不是数组；每个语种含 `title` / `summary` / `aliases`
 - 原语言题名放在对应语种行里
 - `attributes` 的键必须在已发布定义中声明，未声明的键返回 `400 unknown_field: <code>`
-- 业务形态用标签（`attributes.tags`）与动态类型表达，没有 `media_type` 这种树状分类
+- 业务形态用标签（`attributes.tags`）或 GUI 配置的字段/词表表达，字段适用范围由 `applicable_kinds` 声明
 - `cover_aspect` 不是可写字段：它未在已发布定义中声明，自造这个键会被 `unknown_field` 拒绝
 - 比例只是展示建议（音乐 1:1、影视 2:3、书籍 3:4），展示层按封面图自然比例推断
 - `external_ids` 的键必须是已登记的外部权威库（见 `GET /api/catalog/external-databases`）
@@ -154,7 +154,6 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 |---|---|
 | `invalid_relation_type` | 关系码不在已发布定义里，或该码已被停用 |
 | `invalid_endpoints` | 自己连自己，或两端 kind 不在该关系的 `source_kinds` / `target_kinds` 白名单 |
-| `invalid_endpoint_types` | 两端动态业务类型不满足该关系的类型白名单（种子定义未配类型白名单，当前不适用） |
 | `duplicate_relation` | 同类型、同端点、同属性的边已存在（去重键不含 `position`） |
 | `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming`（种子定义未配基数上限，当前不适用） |
 | `relation_cycle` | 声明了 `acyclic` 的关系形成环路（如同类续作互指） |
@@ -234,7 +233,7 @@ GET /api/catalog/entities/:id/revisions
 
 ## 外部导入
 
-导入当前只对接 Bangumi，三个端点都要 `catalog.import.submit`：
+当前已实现 Bangumi、DLsite、DMM 适配器，可选来源以 `GET /api/importer/sources` 为准。三个端点都要 `catalog.import.submit`：
 
 | 端点 | 作用 |
 |---|---|
@@ -246,15 +245,15 @@ GET /api/catalog/entities/:id/revisions
 `import` 的每条实体各自一个事务：中途失败不会回滚已写入的前序实体，所以落库前的零写入预检才是整体防线。
 :::
 
-- 预览含分集分页，详情抓取 ≤8 并发
-- `source` 只接受 `bangumi`（或缺省 / `auto`，同样归一为 `bangumi`）；其它来源 `400 not_supported`
-- 归一化会去空白、忽略大小写，`preview` 与 `import` 共用同一套归一化
-- `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`
+- Bangumi 预览含分集分页，详情抓取 ≤8 并发；DLsite/DMM 读取商品页生成 Work 与数字发行预览，不等同于 Bangumi 的分集和角色关系抓取
+- 明确来源接受当前适配器码，未实现的来源 `400 not_supported`；归一化会去空白、忽略大小写
+- preview 的缺省/auto 按 URL/ID 选择来源，无法识别时回落 bangumi；import 应使用预览返回的明确 source，缺省/auto 在写入归一化中仍回落 bangumi
+- Bangumi 的 `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`；DLsite/DMM 商品预览返回 work，落库以实际预览及零写入预检为准
 - `link_mode` 取 `new_work`（默认）/ `append_release_to_work` / `create_relation`
 - `merge_translations` 会被显式拒绝，补译名走常规编辑
 - 落库前做零写入预检：属性值、未知字段码、`original_language`、翻译行与日期字段都按已发布定义校验，规则与实体写入一致
 - 没有落库位置的载荷字段以 `unsupported_field_for_entity_type` 明确拒绝，不静默丢弃
-- 导入会拉取条目的演职员与角色：语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` / `voiced_by`）
+- Bangumi 导入会拉取条目的演职员与角色：语义明确的职位映射到精确关系码（如 `directed_by` / `photographed_by` / `voiced_by`）
 - 没有精确映射的职位落 `credit_for` 并把职位原文写进 `credit_role`
 - 角色番位落 `character_in` 的 `character_rank`，声优建 `voiced_by` 并以 `character` 引用角色实体
 - 上游 infobox 会映射到已声明的字段码：映射表命中才写，未命中的键只留在 `attributes.infobox` 原文快照里，不另造字段
@@ -262,13 +261,13 @@ GET /api/catalog/entities/:id/revisions
 - 发行版的 `edition_type` / `edition_batch` / `packaging` / `distribution_channel` 只在命中词表时写入，未命中时该维度留空而不是硬凑映射
 
 ::: warning 注意
-导入范围只含署名与角色关系。上游的 work↔work 关系网（`/v0/subjects/{id}/subjects` 一类关联）
+Bangumi 关系导入范围只含署名与角色关系。上游的 work↔work 关系网（`/v0/subjects/{id}/subjects` 一类关联）
 与 `publisher` 实体引用都在导入范围之外（预览只给自由文本名称，不虚构 Agent 引用）。
 :::
 
 ### 来源清单：`GET /api/importer/sources`
 
-- `id` 是代码里的适配器集合，当前只有 `bangumi`
+- `id` 是代码里实际实现的适配器集合，当前为 `bangumi` / `dlsite` / `dmm`
 - `names` / `category` / `icon` / `description` / `url_pattern` 来自外部权威库注册表，含停用行
 - `is_enabled` 只管外链字段是否出现，不决定有没有导入能力
 - 后台改名 / 换图标后弹窗下次打开即生效

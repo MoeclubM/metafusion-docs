@@ -252,18 +252,18 @@ group: "api"
 
 ### 6.4 外部导入
 
-导入器当前只支持 Bangumi：
+导入器当前实现 Bangumi、DLsite、DMM，适配器集合以实例自描述为准：
 
-- `source` 去空白、忽略大小写，留空或 `auto` 都归一为 `bangumi`；`preview` 与 `import` 同一套归一化。
+- `source` 去空白、忽略大小写；preview 的缺省/auto 按 URL/ID 自动探测，未知形态回落 bangumi。import 应传预览返回的明确 source；其缺省/auto 写入归一化仍回落 bangumi。
 - 可选来源以 `GET /api/importer/sources` 为准。清单里只有真有适配器的来源，且不含 `auto`。
-- `entity_type` 取 `work` / `artist` / `organization` / `character`；越出这四个值报 `invalid_entity_type`。
+- Bangumi 的 `entity_type` 取 `work` / `artist` / `organization` / `character`；越出这四个值报 `invalid_entity_type`。DLsite/DMM 商品预览返回 work，不能套用 Bangumi 人物/角色抓取范围。
 - `link_mode` 取 `new_work` / `append_release_to_work` / `create_relation`；`merge_translations` 与其它取值报 `invalid_link_mode`。
 
 载荷声明了就必须被兑现：
 
 - 没有落点的字段在零写入预检里报 `unsupported_field_for_entity_type: entity_type=… field=…`（如 `mediums[].media_category`、`release.cover_aspect`、`release.notes`）。
 - `has_release=true` 或带了非空 `release` 却没有 `mediums`，报 `invalid_payload: … requires mediums`。无载体发行改走 `append_release_to_work`。
-- `media_type_hint` 是声明而非输入，非空即 `not_supported: media_type_hint`。
+- Import 的 `media_type_hint` 非空即 `not_supported: media_type_hint`；Preview 请求没有这个字段，携带它会因未知字段返回 `invalid_payload`。
 - 预览与落库同权限、同一预检判据。预览同样按载荷出站抓取，因此也受限流约束。
 
 ## 7. 可照抄示例

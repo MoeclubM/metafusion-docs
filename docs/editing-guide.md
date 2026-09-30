@@ -47,14 +47,14 @@ MetaFusion 是一个由社区共同维护的开放元数据平台。具备编辑
 | **发行（release）** | 具体出版包，`subjects` 可关联多个作品 | 2003 年发行的初回限定版 CD（品番 KICA-1234） |
 | **载体与曲目（medium / track）** | 介质容器与收录位置 | Disc 1 (CD) 的 Track 01；`contents[].expression_id` 指向被收录表达 |
 
-作品形态用标签与动态类型表达，不用 `media_type` 之类的树状分类；季、卷、载体、规格放在对应层级。
+作品形态用标签或 GUI 配置的字段/词表表达；季、卷、载体、规格放在对应层级。
 
 ## 4. 外部权威标识
 
 为便于自动化识别，实体可关联外部权威 ID（写入 `external_ids`）。键必须已在实例登记的
 外部库清单里（见 `GET /api/catalog/external-databases`），常用来源：
 
-> 这一节是可登记的外部 ID 键，不等于可一键导入的来源：导入适配器目前只有 Bangumi 一个，
+> 这一节是可登记的外部 ID 键，不等于可一键导入的来源：当前已实现 Bangumi、DLsite、DMM 适配器，
 > 以 `GET /api/importer/sources` 为准（见 [新建与编辑](/api-edit) 的「外部导入」）。
 
 - **音乐**：MusicBrainz、VGMdb、ISRC
