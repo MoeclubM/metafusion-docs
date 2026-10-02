@@ -93,7 +93,7 @@ Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`positio
 
 可选字段 `creation_form` 描述歌曲、专辑、小说等创作形态，只用于属性和模板匹配，不改变实体 kind 或可写字段范围。管理员可在 GUI 新增词项与模板。
 
-模板的 `match` 是 exists / equals / contains 条件的 AND，`priority` 决定选择优先级；最高优先级并列时显示通用事实布局。未配置 match 的旧模板兼容原字段匹配；显式 `[]` 是该 kind 的兜底条件。
+模板的 `match` 是 exists / equals / contains 条件的 AND，`priority` 决定选择优先级；最高优先级并列时显示通用事实布局。未配置 match 的模板不参与自动选择，仍可在编辑器中手工选用；显式 `[]` 是该 kind 的兜底条件。系统不按已填字段猜测作品类别。
 
 `blocks` 配置受支持区块的显示与顺序：directory、composition、editions、occurrences、credits、relations、resources。省略时继承布局，`[]` 隐藏可选区块。通用详情按配置组织页签，发行详情按配置排列已有区块；固定事实和修订入口保留。新增关系码、字段、词项、条件和区块顺序均可通过后台完成；增加实体骨架或全新的组件行为仍需开发。
 
