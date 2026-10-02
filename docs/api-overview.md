@@ -104,7 +104,9 @@ MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检�
 | 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
 | 身份与统一关系读取 | `GET /api/catalog/entities/:id/identity`、`/links`；`POST /api/catalog/entities/identity` 只读批量身份解析 | 按实体可见性过滤；见 [实体查询与详情](/api-entities) |
 | 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
+| 表达组合与发行目录/版本 | `GET /api/catalog/expressions/:id/composition`、`GET /api/catalog/releases/:id/toc`、`/editions` | 按实体可见性过滤；用途与示例见 [元数据目录](/catalog) |
 | 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；权限见下文 |
+| 单条收录编辑 | `POST /api/catalog/tracks/:id/contents`、`PUT\|DELETE /api/catalog/tracks/:id/contents/:position` | 需登录；沿用 Track 实体编辑权限和版本，见 [新建与编辑](/api-edit) |
 | 关系写入 | `POST /api/catalog/relations`、`PUT\|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
 | 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役）、`POST /api/catalog/entities/:id/unpublish`（下架：`published → draft`） | `catalog.lifecycle.manage` |
 | 实体与发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个实体，Release/Medium 附内容树） | 开放 |

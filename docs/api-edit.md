@@ -13,6 +13,7 @@ group: "api"
 |---|---|
 | 实体 | `/api/catalog/entities` |
 | 关系 | `/api/catalog/relations` |
+| 单条 Track 收录 | `/api/catalog/tracks/:id/contents` 与 `/:position` |
 | 合并 / 退役 | `/api/catalog/entities/:id/lifecycle` |
 | 下架（`published → draft`） | `/api/catalog/entities/:id/unpublish` |
 
@@ -95,7 +96,7 @@ POST /api/catalog/entities
 | `medium_id` | track（必填） | 所属载体 |
 | `parent_id` | content_unit / medium / track（可选） | 同域同层父节点 |
 | `position` / `number` | medium / track 等 | 次序（非负整数）/ 官方原文编号 |
-| `contents[]` | track | 曲目收录内容，字段为 `{ expression_id, position, locator, attributes }` |
+| `contents[]` | track | 曲目收录内容，字段为 `{ expression_id, position, locator, attributes, sources }`；sources 是可选直接收录证据 |
 | `subjects[]` | release | 发行版声明收录了哪些作品，字段为 `{ work_id, role, position, attributes }` |
 
 `subjects[].role` 取 `primary` / `compilation` / `supplement`，同一作品同一角色只允许一条。
@@ -130,6 +131,29 @@ PUT 是整实体替换，不是局部 PATCH：先 `GET /api/catalog/entities/:id
 - 发布就是 PUT 写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`
 - `deleted` / `merged` 走生命周期端点；PUT 提交这两个状态返回 `400 use_lifecycle_endpoint`
 - 已发布条目改回 `draft` 走下架端点 `POST /api/catalog/entities/:id/unpublish`（见下「下架」）；PUT 提交降级仍然返回 `400 use_lifecycle_endpoint`——降级只有这一条通道
+
+### 单条收录
+
+目标实例支持这些接口时，Track 内容页可逐条编辑收录。版本边界是拥有者 Track，其他收录保持；不可见历史收录保留，响应仍按可见性裁剪。
+
+```http
+POST   /api/catalog/tracks/:id/contents           # 增加
+PUT    /api/catalog/tracks/:id/contents/:position # 替换或重排，URL 为旧位置
+DELETE /api/catalog/tracks/:id/contents/:position # 删除，仍须请求体
+```
+
+增加或替换的请求体：
+
+```json
+{
+  "inclusion": {"expression_id": "<表达 UUID>", "position": 0, "locator": {}, "attributes": {}},
+  "expected_version": 3,
+  "edit_note": "依据官方曲目表补充收录",
+  "sources": [{"kind": "url", "citation": "官方曲目表确认本轨所收录录音", "url": "https://example.com/tracklist"}]
+}
+```
+
+inclusion.sources 可独立填写；省略时新/改变的收录使用本次编辑来源。替换的 inclusion.position 可以不同于 URL 中旧位置。删除只带 expected_version/edit_note/sources。每次成功产生 Track 修订；409 后回读再合并，不盲重放。旧整实体 PUT 省略 sources 时，新服务保留未改变收录的证据；旧记录的空来源不会自动补造。
 
 ## 关系
 
