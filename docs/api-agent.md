@@ -7,7 +7,7 @@ group: "api"
 
 # AI Agent API 与工具规范
 
-Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。
+Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系批量查询用只读 `POST /api/catalog/relationships/query`，上下文关系详情读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。批量查询的方向、动态规则、摘要和分页见[实体查询与详情](/api-entities#agent-批量关系查询)；查询不获得写入授权。
 
 ::: warning 注意：没有原子提交
 主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
@@ -59,6 +59,25 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
         "type": "object",
         "properties": { "id": { "type": "string", "format": "uuid" } },
         "required": ["id"]
+      }
+    },
+    {
+      "name": "metafusion_query_relationships",
+      "description": "只读批量查询直接结构、收录和语义关系。按方向、运行时规则码和对端kind筛选后分页；返回pages、entities摘要、unavailable_ids和definition_etag。不自动遍历全图。",
+      "method": "POST",
+      "path": "/api/catalog/relationships/query",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ids": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "format": "uuid" } },
+          "direction": { "type": "string", "enum": ["both", "outgoing", "incoming"], "default": "both" },
+          "rule_codes": { "type": "array", "items": { "type": "string" }, "description": "definitions.relationship_rules中的完整code" },
+          "peer_kinds": { "type": "array", "items": { "type": "string", "enum": ["agent", "collection", "work", "content_unit", "expression", "release", "medium", "track"] } },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
+          "offset": { "type": "integer", "minimum": 0, "maximum": 10000, "default": 0 }
+        },
+        "required": ["ids"]
       }
     },
     {

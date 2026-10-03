@@ -116,6 +116,44 @@ curl "/api/catalog/entities/<id>/relations" -H "User-Agent: MyApp/1.0 (you@examp
 
 统一 links 不是第二份事实存储。需要更多页时按 has_more 继续取数；404 是不存在/不可见，401/403、429、5xx 要分别处理。
 
+### Agent 批量关系查询
+
+`POST /api/catalog/relationships/query` 是只读查询，批量读取主体的直接结构、收录和语义关系。关系码来自当前 `definitions.relationship_rules`，包括 GUI 扩展的 `relation:` 码。
+
+```http
+POST /api/catalog/relationships/query
+Content-Type: application/json
+
+{
+  "ids": ["<release_uuid>", "<expression_uuid>"],
+  "direction": "both",
+  "limit": 25,
+  "offset": 0
+}
+```
+
+| 参数 | 含义 |
+| --- | --- |
+| `ids` | 1–20个UUID，去重并保留请求顺序 |
+| `direction` | `both`（默认）、`outgoing`或`incoming`，相对于每个主体 |
+| `rule_codes` | 可选数组，当前关系注册表中的完整码，例如 `structure:track_content`；多个码为命中任一 |
+| `peer_kinds` | 可选数组，八类kind中相对主体的另一端层级；多个kind为命中任一 |
+| `limit` | 每个主体的页大小，默认25，范围1–100 |
+| `offset` | 每个主体的偏移，默认0，范围0–10000 |
+
+筛选和端点可见性检查先于分页。响应含：
+
+- `definition_etag`：本次读取的定义版本。
+- `pages`：按可见主体的请求顺序返回 `{subject_id, items, limit, offset, has_more}`；每个主体独立分页。
+- `entities`：去重的可见端点摘要，只有id、kind、version、title、original_language和translations；不能当作完整实体写回。
+- `unavailable_ids`：不存在或当前不可见的请求ID，两者不区分。
+
+items沿用links的边形状，事实方向始终为 `source_id → target_id`；`direction` 标明相对主体的方向，反向名称不反转事实。固定边只读，语义边仍由既有relations端点编辑。
+
+单次请求的定义、主体与各页在一个一致性只读快照中读取；继续分页是新的快照。某页 `has_more=true` 时，可用该主体和相同筛选继续请求，offset增加本页limit。接口只读一跳，不自动展开全图；多页或多跳未完成时不能将结果称为全集。
+
+例如，Expression向内筛选Track可查询实际收录位置，再沿Track的Medium和Release归属追踪发行；Work的release_subject只证明发行声明了该作品，不能证明某个录音被收录。Release向外筛选Medium可查询介质，完整曲序仍可用发行toc。参数错误返回400；数据库或网络失败使查询失败，不返回伪空结果。默认限流60次/分钟，按当前账户、组策略计算；429需遵循Retry-After。
+
 Track 的公开读取会过滤不可见表达的收录；普通编辑者整实体 PUT 删除或改写被过滤的历史引用会返回 403 forbidden，需有权查看完整事实的创建者或审核者处理。不要把裁剪后的公开视图直接当作完整备份。
 
 ## 批量表达详情
