@@ -1,6 +1,6 @@
 ---
 title: "认证与凭证"
-description: "会话令牌、个人访问令牌（PAT）、OAuth 2.0 / OIDC、注册与邀请、开发者中心。"
+description: "会话、个人访问令牌、注册邀请、账号资料、授权撤回与账号管理。"
 order: 20
 group: "api"
 ---
@@ -102,10 +102,6 @@ PAT 是下游服务各自内省的，三个服务用的是同一份契约（前�
 - 目录：`/api/` 的兜底前缀，含 `/api/catalog/*`、`/api/importer/*`、`/api/exchange/*`
 - 互动：`/api/community/*` 等
 - 存储：`/api/storage/*`
-
-::: warning 以目标实例的响应为准
-还没接入这一版的服务会把 `mfp_` 当成普通令牌验签失败处理（读端点按匿名 200、写端点 `401 authentication_required`），不会返回 PAT 的两个机器码——遇到这种表现先怀疑部署进度，别改令牌。
-:::
 
 ### 安全建议
 
@@ -218,7 +214,7 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 封禁是访问控制（不能登录 / 续期 / 验签），不是「这个人不存在」——他的历史贡献与别人会话里的引用都还指向这个 id，回 404 会让其它服务里的链接整片失效。
 :::
 
-用户主页的另外两组数据各由对应服务提供：三个互动数字（主题 / 回复 / 收藏）见 [社区使用指南](/community-guide)，目录侧贡献流见 [实体查询与详情](/api-entities)。
+用户主页的另外两组数据各由对应服务提供：三个互动数字（主题 / 回复 / 收藏）见 [社区与互动 API](/api-community#用户主页统计)，目录侧贡献流见 [实体查询与详情](/api-entities)。
 
 ## 管理台端点
 
@@ -255,49 +251,9 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 目录 / 互动 / 存储三个服务是本地 JWKS 验签、不回调账号服务，被封账号的旧令牌在它们那里最长还能用到自然过期（≤15 分钟）。这是无状态验签的既有取舍（要即时跨服务撤销需引入 introspection 或共享注销集合，当前未实现）。
 :::
 
-## 开发者中心（自助登记 OAuth 应用）
+## OAuth 应用接入
 
-任何登录用户都可以登记自己的应用，无需管理员：
-
-```http
-GET    /api/developer/overview              # 接入配置：issuer、端点与 scope 说明（不含任何客户端清单）
-GET    /api/developer/apps                  # 我的应用
-POST   /api/developer/apps                  # 新建；明文 client_secret 只在这一次响应里出现
-GET    /api/developer/apps/:id
-PUT    /api/developer/apps/:id
-POST   /api/developer/apps/:id/rotate-secret
-DELETE /api/developer/apps/:id
-```
-
-同一个应用也可以由管理员在管理台 `/api/admin/oauth/clients` 下维护（按 `auth.oauth.manage` 授权，而开发者中心按归属授权）。密钥在库里只存哈希，之后无处可取，只能轮换。
-
-自助登记有配额：每个账号最多 20 个应用，超限返回 `app_quota_exceeded`。
-
-### 归属判定
-
-- 列表与读 / 改 / 轮换 / 删一律按归属判定（归属 = 当前账号），**管理员也没有例外**。
-- 不属于自己的 `client_id` 返回 `404` + `{"error":"client_not_found"}`，而不是 `403`——`403` 会泄漏「这个 id 已被占用」。
-- 配额同样一视同仁；要批量登记或治理别人的客户端走管理面。
-
-### 系统应用只在管理台维护
-
-系统应用（平台自有、归属为空）开发者面看不到、自助接口也不返回。`GET /api/developer/apps` 的「我的应用」只列归属当前账号的应用（归属为空的行永不匹配）。
-
-### 开发者面不回客户端清单
-
-`GET /api/developer/overview` 只回接入配置（`issuer` / `account_url` / `endpoints` / `grant_types` / `response_types` / `code_challenge_methods` / `scopes`）。系统应用的 `client_id`、回调地址与归属都不出现——此前那个 `platforms` 字段已连查询一起删除。
-
-全量客户端视图只有管理面 `/api/admin/oauth/clients*`。
-
-### 核验状态
-
-核验（`verified`）是管理面的动作：第三方应用自助登记后默认未核验，由管理员在 `PUT /api/admin/oauth/clients/{id}` 里置 `verified`。未核验的应用在同意页上会多一条「未核验」提示。
-
-开发者面只读这个状态，不能自证。
-
-::: tip 自助登记入口
-网关已把 `/api/developer/*` 分流到账号服务（主仓库 `deploy/nginx.conf`）。登录后在站内导航「开发者中心」（`/developer`）即可自助登记应用、查看接入配置（issuer、端点与 scope 说明）；管理面的 `/api/admin/oauth/clients`（需 `auth.oauth.manage`）用于平台侧治理所有客户端——两边写的是同一张表、走同一份校验，差别只在授权判定（归属 vs 权限码）。
-:::
+自助登记、归属授权、密钥轮换与客户端核验统一见[第三方站点接入 OAuth 授权](/oauth-integration#客户端登记与归属)。账号会话与 PAT 的维护使用本页接口。
 
 ## 限流
 

@@ -36,10 +36,10 @@ features:
 | 你想做什么 | 阅读入口 |
 | --- | --- |
 | 第一次使用，找作品或下载文件 | [快速上手指南](/quickstart)、[常见问题](/faq) |
-| 新建词条，纠正资料或投稿 | [词条编辑与合并规范](/editing-guide)、[资源收录与投稿标准](/contribute-guide) |
+| 新建词条，纠正资料或投稿 | [词条编辑与审查规范](/editing-guide)、[资源上传与下载](/upload-download) |
 | 理解作品、版本和收录之间的区别 | [元数据目录教程](/catalog)、[实体模型与字段](/frbr-model) |
 | 开发客户端、同步脚本或查询工具 | [API 概览](/api-overview)、[实体查询与详情](/api-entities) |
-| 让 Agent 接入平台 | [AI Agent 协作指南](/agent-integration)、[AI Agent API 与工具规范](/api-agent) |
+| 让 Agent 接入平台 | [AI Agent API 与工具规范](/api-agent) |
 | 了解社区规则或联系站务 | [社区使用指南](/community-guide)、[联系方式](/contact) |
 
 页面左侧按「开始使用 → 参与共建 → 理解数据 → API 与 Agent 接入 → 条款与支持」分区；页内目录帮助定位具体问题。

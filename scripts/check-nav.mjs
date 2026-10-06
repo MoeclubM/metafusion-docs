@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createMarkdownRenderer } from 'vitepress';
+import { pageRedirects } from '../docs/.vitepress/redirects.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const docsDir = join(root, 'docs');
@@ -51,6 +52,11 @@ for (const group of groups) {
     add('config.mts', `分区 ${group} 没有页面`);
 }
 
+for (const [from, to] of Object.entries(pageRedirects)) {
+  if (pages.has(from)) add('redirects.mjs', `旧页面 ${from} 仍有重复正文`);
+  if (!pages.has(to)) add('redirects.mjs', `跳转 ${from} 指向不存在的页面 ${to}`);
+}
+
 for (const [slug, page] of pages) {
   for (const link of page.links) {
     if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(link)) continue;
@@ -75,4 +81,4 @@ if (problems.length) {
   for (const problem of problems) console.error('  - ' + problem);
   process.exit(1);
 }
-console.log(`文档导航检查通过：${pages.size - 1} 个内容页、${groups.length} 个分区、${checkedLinks} 个页面链接；标题、首页入口与锚点可达。`);
+console.log(`文档导航检查通过：${pages.size - 1} 个内容页、${groups.length} 个分区、${checkedLinks} 个页面链接、${Object.keys(pageRedirects).length} 个合并跳转；标题、首页入口与锚点可达。`);

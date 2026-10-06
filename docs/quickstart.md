@@ -47,8 +47,8 @@ group: "intro"
 4. 添加具体来源和修改说明，说明这次新增或纠正了哪些事实。
 5. 按权限保存为草稿、提交审核或发布，再回到详情页核对结果。
 
-来源与命名要求见[词条编辑与合并规范](/editing-guide)。投稿文件前请阅读[资源收录与投稿标准](/contribute-guide)。
+来源与命名要求见[词条编辑与审查规范](/editing-guide)。投稿文件前请阅读[资源上传与下载](/upload-download)。
 
 ## 继续使用
 
-社区讨论、私信与举报见[社区使用指南](/community-guide)。需要程序查询或自动化编辑时，从[API 概览](/api-overview)或[AI Agent 协作指南](/agent-integration)开始。
+社区讨论、私信与举报见[社区使用指南](/community-guide)。需要程序查询或自动化编辑时，从[API 概览](/api-overview)或[AI Agent API 与工具规范](/api-agent)开始。

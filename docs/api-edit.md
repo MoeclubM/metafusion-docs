@@ -81,6 +81,7 @@ POST /api/catalog/entities
 ```
 
 - `kind`：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`
+- 创建时 `entity.id` 留空（否则 `400 id_must_be_empty`），`expected_version` 为 0；更新使用详情返回的身份与版本。
 - `translations` 是按 locale 分组的对象，不是数组；每个语种含 `title` / `summary` / `aliases`
 - 原语言题名放在对应语种行里
 - `attributes` 的键必须在已发布定义中声明，未声明的键返回 `400 unknown_field: <code>`
@@ -95,18 +96,7 @@ POST /api/catalog/entities
 
 ### 层级与归属字段
 
-| 字段 | 只用在 | 说明 |
-|---|---|---|
-| `work_id` | content_unit、expression（都必填） | 所属作品 |
-| `content_unit_id` | expression（可选） | 所属内容单元 |
-| `release_id` | medium（必填） | 所属发行版 |
-| `medium_id` | track（必填） | 所属载体 |
-| `parent_id` | content_unit / medium / track（可选） | 同域同层父节点 |
-| `position` / `number` | medium / track 等 | 次序（非负整数）/ 官方原文编号 |
-| `contents[]` | track | 曲目收录内容，字段为 `{ expression_id, position, locator, attributes, sources }`；sources 是可选直接收录证据 |
-| `subjects[]` | release | 发行版声明收录了哪些作品，字段为 `{ work_id, role, position, attributes }` |
-
-`subjects[].role` 取 `primary` / `compilation` / `supplement`，同一作品同一角色只允许一条。
+结构字段、必填归属、subjects 与 contents 的形状统一见[实体模型与字段](/frbr-model#固定归属)。
 
 结构字段按层级收敛：发行版没有 `work_id`，收录关系只能经 `subjects`；`contents` 只对 `track` 有效，`subjects` 只对 `release` 有效。给某个 kind 传它用不到的结构字段会返回 `400 invalid_structural_field: <字段码>`，缺必填归属返回 `400 parent_required`。
 
@@ -188,25 +178,14 @@ DELETE /api/catalog/relations/:id      # 删边（body 带 expected_version 与�
 | `invalid_relation_type` | 关系码不在已发布定义里，或该码已被停用 |
 | `invalid_endpoints` | 自己连自己，或两端 kind 不在该关系的 `source_kinds` / `target_kinds` 白名单 |
 | `duplicate_relation` | 同类型、同端点、同属性的边已存在（去重键不含 `position`） |
-| `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming`（种子定义未配基数上限，当前不适用） |
+| `cardinality_exceeded` | 超过该关系的 `max_outgoing` / `max_incoming` |
 | `relation_cycle` | 声明了 `acyclic` 的关系形成环路（如同类续作互指） |
 
 判重的去重键是「端点 + 类型 + 属性」，不含 `position`。同一对端点、同一关系码、属性也完全相同、只有 `position` 不同的两条边会被库内唯一索引拦下（`400 constraint_violation`）。
 
 要表达「同一演员在同一作品的两个角色位」，请让 `attributes` 不同（如 `character` 指向不同角色实体）。
 
-默认种子的关系码如下，以 `GET /api/catalog/definitions` 为准：
-
-- **credits**（署名，一般指向 agent）：`created_by`、`performed_by`、`photographed_by`、`modeled_by`、`developed_by`、`voiced_by`、`composed_by`、`lyricist_of`、`arranged_by`、`directed_by`、`written_by`、`illustrated_by`、`narrated_by`、`translated_by`
-- `character_in` 表示角色登场；`credit_for` 是通用署名兜底，职位原文写进 `attributes.credit_role`
-- **creative**（内容关系）：work↔work 用 `adaptation_of`、`sequel_of`、`spin_off_of`、`soundtrack_of`；expression↔expression 用 `translation_of`、`revision_of`、`cover_of`、`alternate_take_of`；release↔release 用 `pressing_of`
-- **membership**（组成与成员）：`includes`（collection / work → work / collection，声明 `aggregate`）、`member_of`（agent↔agent）、`bonus_included_in`、`store_bonus_for`
-
-`includes` 等声明 `acyclic` 的码会做环路检测；同一角色跨作品用多条 `character_in`。
-
-::: tip 提示
-外部来源的职位若没有贴切的码，用 `credit_for` + `credit_role` 保真，不要虚构新码。
-:::
+关系码与上下文字段从当前[动态定义](/api-definitions#关系与模板)选择。外部职位没有精确关系时，只在定义允许的通用参与关系中保留职位原文，不虚构新码。
 
 ## 生命周期：合并与退役
 
@@ -216,7 +195,7 @@ POST /api/catalog/entities/:id/lifecycle
   "sources": [{ "kind": "url", "citation": "两个条目指向同一实体的官方出处", "url": "https://example.com" }] }
 ```
 
-- 带 `target_id` 为合并：目标必须同 kind、同归属（`work_id` / `release_id` / `medium_id` / `parent_id` 一致）且已发布，否则 `400 invalid_merge_target`
+- 带 `target_id` 为合并：目标必须同 kind、同归属（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id` 一致）且已发布，否则 `400 invalid_merge_target`
 - 合并后源实体状态置 `merged` 并写入 `redirect_id`，指向它的关系与结构引用会被改写
 - 旧 id 用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体
 - 不带 `target_id` 为退役：状态置 `deleted`
@@ -283,6 +262,7 @@ GET /api/catalog/entities/:id/revisions
 - preview 的缺省/auto 按 URL/ID 选择来源，无法识别时回落 bangumi；import 应使用预览返回的明确 source，缺省/auto 在写入归一化中仍回落 bangumi
 - Bangumi 的 `entity_type` 取 `work` / `artist` / `organization` / `character`，非法值 `400 invalid_entity_type`；DLsite/DMM 商品预览返回 work，落库以实际预览及零写入预检为准
 - `link_mode` 取 `new_work`（默认）/ `append_release_to_work` / `create_relation`
+- `has_release=true` 时必须带 `mediums`；缺少时返回 `400 invalid_payload: has_release=true requires mediums`。其他非 `append_release_to_work` 模式带非空发行对象但无载体时，返回 `400 invalid_payload: release requires mediums`。无载体发行应明确使用 `append_release_to_work` 并按该模式构造载荷。
 - `merge_translations` 会被显式拒绝，补译名走常规编辑
 - 落库前做零写入预检：属性值、未知字段码、`original_language`、翻译行与日期字段都按已发布定义校验，规则与实体写入一致
 - 没有落库位置的载荷字段以 `unsupported_field_for_entity_type` 明确拒绝，不静默丢弃

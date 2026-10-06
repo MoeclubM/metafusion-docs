@@ -1,277 +1,96 @@
 ---
 title: "AI Agent API 与工具规范"
-description: "面向 LLM / Agent 的工具声明、写入契约、权限码、幂等与错误自愈表。"
+description: "技能接入、动态工具声明、关系遍历、写入计划与失败恢复。"
 order: 90
 group: "api"
 ---
 
 # AI Agent API 与工具规范
 
-Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/catalog/entities`，写入用 `POST / PUT /api/catalog/entities`，关系批量查询用只读 `POST /api/catalog/relationships/query`，上下文关系详情读 `GET /api/catalog/entities/{id}/relations`、写用 `POST / PUT /api/catalog/relations`。批量查询的方向、动态规则、摘要和分页见[实体查询与详情](/api-entities#agent-批量关系查询)；查询不获得写入授权。
+本页说明 Agent 如何组织技能、工具和任务状态。请求体、权限和参数以对应 API 页面及目标实例为准，先从[API 概览](/api-overview)确认服务入口与契约。
 
-::: warning 注意：没有原子提交
-主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
-:::
+## 技能接入
 
-接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录教程](/catalog)；推荐的技能接入入口见 [AI Agent 协作指南](/agent-integration)。
+已安装或能获取 MetaFusion 技能时，优先按技能执行编目操作。入口为[MetaFusion 技能仓库](https://github.com/MoeclubM/metafusion-skills)，获取权限以仓库设置为准；无法访问或环境不支持技能时，可按本页和目标实例的协议直接接入。
 
-## 1. 运行时事实来源
+按仓库[使用说明](https://github.com/MoeclubM/metafusion-skills/blob/main/README.md#使用)复制所需技能目录。编目技能与建模技能同级安装并保持同一仓库修订；更新时只复制版本库内容，不覆盖本机凭据或运行产物。
 
-字段码、词表项、关系码与结构归属只从服务端取，不要固化在 Agent 里：
+| 任务 | 技能 |
+| --- | --- |
+| 编目、查重、来源检索与目录读写 | [metafusion-curator](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/metafusion-curator/SKILL.md) |
+| 实体层级、命名与表达复用 | [lrm-catalog-standards](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/lrm-catalog-standards/SKILL.md) |
+| 只读批量关系查询，可独立安装 | [metafusion-relationship-query](https://github.com/MoeclubM/metafusion-skills/blob/main/skills/metafusion-relationship-query/SKILL.md) |
+
+使用用户指定的实例。安装或使用技能不等于线上写入授权；写入前确认用户授权的目标、操作和范围，并具备对应 API 权限。凭据按[认证与凭证](/api-auth)配置，不写入技能或对话。
+
+## 运行时事实与工具声明
 
 | 事实 | 来源 |
 | --- | --- |
-| 端点、请求体模式、响应模式 | `GET /api/openapi.json`（OpenAPI 3.0.3，只覆盖目录服务） |
-| 当前生效定义：fields / vocabularies / relations / templates / schemes / structure，以及 etag 和只读 relationship_rules，以及八类 kind 的多语言名 `kinds`（每项名称是四语 map） | `GET /api/catalog/definitions` |
-| 实际能力 | 目标实例的响应；文档与响应冲突时以响应为准，暂停写入并记录差异 |
+| HTTP 方法、路径、输入与响应模式 | `GET /api/openapi.json`，只覆盖目录服务 |
+| 字段、词项、结构、关系与可遍历规则 | `GET /api/catalog/definitions`，记录 etag 与 relationship_rules |
+| 外围账号、社区、存储能力 | 对应 API 页面、实例能力声明及实际响应；能力声明不能代替健康检查 |
 
-八类 kind 是固定的骨架：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`。`kind` 参数取具体 kind，没有 `all`。
+字段与关系可由站点扩展，不能把种子定义固化在 Agent 中。工具输入遵循当前 schema，记录目标实例、读写属性与所需权限；文档和实例响应冲突时停止依赖该差异的写入，报告差异。
 
-## 2. 工具声明
+读、创建、替换和删除分别声明工具。每个工具映射一个 HTTP 方法与路径，不把方法组合或中文说明写进 path。
 
-根据目标实例 OpenAPI 构造工具，HTTP method、path 和参数分别映射。读、创建、替换和删除分别声明工具，避免把多种方法或中文说明拼进同一个 path。
-
-| 建议工具 | HTTP 入口 | 关键输入与输出 |
+| 建议工具 | HTTP 入口 | 用途 |
 | --- | --- | --- |
-| find_entities | `GET /api/catalog/entities` | q、筛选、limit 与分页；返回实体及计数口径 |
-| get_entity | `GET /api/catalog/entities/{id}` | 完整实体与 version，编辑前使用 |
-| resolve_identity | `GET /api/catalog/entities/{id}/identity` | canonical_id、aliases、entity、complete |
-| query_relationships | `POST /api/catalog/relationships/query` | ids、方向、规则、对端筛选与逐主体分页 |
-| get_definitions | `GET /api/catalog/definitions` | 当前 ETag、字段、词项与关系注册表 |
-| create_entity / replace_entity | `POST /api/catalog/entities` / `PUT .../{id}` | entity、expected_version、edit_note、sources |
-| create_relation / replace_relation / delete_relation | `POST /api/catalog/relations` / `PUT|DELETE .../{id}` | relation 或版本与证据 |
-| edit_track_content | `POST|PUT|DELETE /api/catalog/tracks/{id}/contents[/position]` | inclusion 或版本与证据 |
+| find_entities | `GET /api/catalog/entities` | 查重与筛选，分页按查询模式处理 |
+| get_entity | `GET /api/catalog/entities/{id}` | 获取完整实体与当前 version |
+| resolve_identity | `GET /api/catalog/entities/{id}/identity` | 解析保留身份与历史别名 |
+| query_relationships | `POST /api/catalog/relationships/query` | 读取直接关系与上下文引用 |
+| get_definitions | `GET /api/catalog/definitions` | 获取当前动态约束 |
+| create_entity / replace_entity | 分别映射 `POST /api/catalog/entities`、`PUT .../{id}` | 按[新建与编辑](/api-edit)写入 |
+| 关系与单条收录工具 | 按 OpenAPI 分别映射 `/catalog/relations`、`/catalog/tracks/{id}/contents` 的写方法 | 保留版本条件与证据 |
 
-动态 field、词项与 rule_codes 每次从 definitions 校验，描述中保留目标实例、读写属性和所需权限。工具输入应遵循当前 schema，不自行加入旧字段。
+接入后先做只读验证：读取定义，查询一个可见条目，解析身份并读取关系。长期运行凭据及撤销窗口见[PAT](/api-auth#个人访问令牌-pat)，路由预算见[限流](/api-overview#限流)。
 
-### 查询结果的完整性
+## 关系遍历与完整性
 
-- **关键词**：total_relation=index_snapshot；按 has_more 和 next_cursor 继续，items 为空也可能还有下一页。保持查询、筛选、排序、语言、limit 与身份，PIT 过期后重新开始。
-- **关系**：每批最多 20 个主体，每个主体单独分页。覆盖固定结构、语义关系和 definitions 声明的实体属性引用，含嵌套 group/list。
-- **上下文引用**：读 references 的 field / entity_id；via 标明主体通过哪些非端点属性被引用，不能只遍历 source_id / target_id。
-- **递归**：维护待查 ID、已访问 ID 和每个主体的页进度，处理 unavailable_ids 与 definition_etag。接口只读可见的一跳，完整性仅限已经完成的查询范围。
-- **编辑**：批量关系 entities 是摘要；写入前调用 get_entity 获取完整实体与当前 version。
+接口读取可见的一跳；完整参数与响应见[批量关系查询](/api-entities#agent-批量关系查询)。Agent 应维护任务范围和进度：
 
-参数和响应的完整说明见[实体查询与详情](/api-entities)与[检索](/api-search)。从发现规范生成工具后，应对目标实例做只读接入检查；查询能力不授予写入权限。
+1. 将起始实体解析到保留身份，记录待查队列、已访问 ID 与筛选条件。
+2. 将页进度相同的主体组成一批，读取关系。逐主体保存 offset、has_more 和已收集的事实，不能用某个主体的页结束代替整批完成。
+3. 同时读取端点与 references；via 标记主体通过非端点属性匹配的路径，只看 source_id / target_id 会遗漏上下文引用。
+4. 每个主体分页完成后，再将范围内的新实体加入待查队列并去重。记录 unavailable_ids、definition_etag 和发生失败的页。
+5. 定义变化或跨页数据变化时重新核对受影响范围；没有不可用主体且约定范围全部完成后，才声明该可见范围完整。
 
-## 3. 认证与权限码
+关键词检索按[检索](/api-search)的 has_more / next_cursor 继续，不能因 items 为空就结束。查询失败不等于零命中，不据此直接创建新条目。
 
-身份来自账号服务（`metafusion-auth`），支持两种凭据：
+完整性只覆盖已声明的目录结构、语义关系与实体属性引用。普通字符串、外部文件、收藏和跨服务资源不会自动推断为目录关系；批量响应的 entities 是摘要，不能直接用于编辑。
 
-- **会话 / OAuth 的 RS256 令牌**：请求头 `Authorization: Bearer <token>` 或 Cookie `mf_session`，目录侧只验签。
-- **个人访问令牌（PAT）**：明文前缀 `mfp_`。目录侧把它送给账号服务的内省端点判定，适用于长期运行的 Agent 与 CI。
+## 编目与写入计划
 
-### PAT 创建与使用
+1. 查重并核验来源，再按[目录教程](/catalog)确定层级与复用对象，用[编辑与审查规范](/editing-guide)核对事实。
+2. 为每一步保存目标、输入、证据、创建键及返回 ID；按依赖逐层提交：
 
-- 长期接入用 PAT，不要共用某个人的会话令牌。
-- 在设置页自助创建（`POST /api/auth/tokens`，需登录态，PAT 本身不能再创建 PAT）。
-- 明文只在创建响应里出现一次。
-- `scopes` 填权限码（不是 `read` / `write`），且必须是账号自己当前持有的码；超出本人权限的创建会被拒绝。
+   ```text
+   agent / work → content_unit / expression → release（声明 subjects） → medium → track → relations
+   ```
 
-### PAT 权限
+3. 更新前重新读取完整实体，仅修改需要改变的字段，并按[新建与编辑](/api-edit#编辑实体)保留无关数据和逐条收录证据。不可见历史引用需由能查看完整事实的人处理。
+4. 保存后回读条目、关系、收录与修订记录。后续失败不会回滚前序成功步骤，报告应分别列出已完成、未完成和待复核内容。
 
-- PAT 的有效权限 = 账号现时权限 ∩ 令牌 scopes。
-- scopes 为空数组即"只有身份、零权限"：任何权限码闸门都返回 `403`，不会按角色兜底。
-- 权限被收回后令牌自动变窄。
+创建结果不确定时保持同一任务的原幂等键和原载荷，不盲目换键；版本冲突时回读并合并修改，不直接覆盖最新数据。生命周期操作与常规编辑分开选择，详细载荷和权限只在[新建与编辑](/api-edit)维护。
 
-::: warning 注意：吊销不是立即生效
-吊销、到期与权限收回在目录侧最长 60 秒后生效（下游缓存 60 秒内省结果）。不要按"立即失效"写重试逻辑。
-:::
+## 失败后的动作
 
-### PAT 错误码
+根据 HTTP 状态和机器码选择动作。下表聚焦任务恢复，具体字段约束查看相关 API 页面。
 
-- 稳定机器码只有两个：无效 / 已吊销 / 已过期 / 账号被封禁 → `401 invalid_token`；账号服务不可达 → `503 auth_unavailable`（重试，不要换凭据）。
-- 形态非法的 `mfp_` 令牌在读端点也返回 401，与"会话令牌坏了按匿名继续"不同。
-
-### PAT 与限流
-
-- PAT 不绕过限流。目录侧的路由级限流按 IP + 路由、与凭据无关。
-- 命中限流的路由每个响应都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`，长跑 Agent 应据此自己节流。
-- 超限仍是 `429 rate_limited` + `Retry-After`。
-
-没有 `X-API-Key` 认证方式；scope 也不是 `catalog:write` 这类读写词表。完整口径（限额 10 张、`expires_in_days`、吊销窗口、安全建议）见 [认证与凭证](/api-auth)。
-
-| 权限码 | 允许的操作 | 闸门位置 |
-| --- | --- | --- |
-| `catalog.entity.edit` | 维护公开条目，并维护自己创建的任意状态条目 | 不在路由上硬闸：`POST / PUT /api/catalog/entities` 只要求登录；无此码者只能写自己创建的 `draft` / `pending_review` |
-| `catalog.relation.edit` | 关系创建、替换与删除 | 硬闸：`POST /api/catalog/relations`、`PUT / DELETE /api/catalog/relations/:id` |
-| `catalog.lifecycle.manage` | 发布/处置他人的未发布条目；合并、退役与下架 | 合并/退役硬闸：`POST /api/catalog/entities/:id/lifecycle`；下架硬闸：`POST /api/catalog/entities/:id/unpublish`；发布他人草稿走实体写入 `PUT`（同一权限码判定） |
-| `catalog.definitions.manage` | 生效定义与外部权威库管理 | 硬闸：`/api/admin/catalog-definitions`、`/api/admin/external-databases` |
-| `catalog.import.submit` | 外部导入的来源清单、预览与落库 | 硬闸：`GET /api/importer/sources`、`POST /api/importer/preview`、`POST /api/importer/import` |
-| `catalog.shelves.manage` | 货架规则管理 | 硬闸：`/api/admin/shelves` |
-
-权限码来自令牌的 `permissions`：带 `*` 即全部目录权限。
-
-目录权限只按 `permissions` 判断，缺失或空集合不补授角色权限。PAT 的权限取账号现时权限与令牌 scopes 的交集。
-
-## 4. 写入契约
-
-请求体统一是「实体/关系 + 版本 + 证据」三件套：`{entity | relation, expected_version, edit_note, sources}`。
-
-### 4.1 实体写入
-
-| 行为 | 具体事实 |
+| 情况 | Agent 动作 |
 | --- | --- |
-| 创建 | `POST /api/catalog/entities`；`entity.id` 必须留空（带了返回 `400 id_must_be_empty`），`expected_version` 必须为 0 |
-| 更新 | `PUT /api/catalog/entities/:id`：**整实体替换**，先 `GET` 全量、只改需要改的字段、其余原样带回；翻译、标签、`contents` 都可能整组替换 |
-| 乐观锁 | 版本条件进 SQL 的 `WHERE`，读版本与写入是一次原子操作；不一致返回 `409 version_conflict` |
-| 不可变归属 | `kind` / `work_id` / `release_id` / `medium_id` 写入后不可改（`400 immutable_scope`）；换归属要重建实体 |
-| 结构归属 | `content_unit` / `expression` 必须有 `work_id`，`medium` 必须有 `release_id`，`track` 必须有 `medium_id`，否则 `400 parent_required`；`parent_id` 只能指向同域父节点 |
-| 收录声明 | 被 Track 收录的 Expression 所属 Work，必须在该 Release 的 `subjects` 里声明（`role` 取 `primary` / `compilation` / `supplement`），否则 `400 undeclared_release_subject` |
-| 状态 | 缺省 `draft`，另有 `pending_review` / `published`；`deleted` / `merged` 只能经生命周期端点写入（`400 use_lifecycle_endpoint`），详见 4.3 |
-| 发布 | `status=published` 要求至少一条 `translations`（`400 translation_required`），且所有结构引用的实体对匿名可见，即本身已发布 |
-| 证据 | `edit_note` 非空 + `sources` 至少 1 项，否则 `400 evidence_required` |
+| 400 载荷、字段、词项或来源校验失败 | 用当前 OpenAPI / definitions 与来源改正输入，不用近似值绕过校验 |
+| `invalid_reference` 或身份已合并 | 回读引用并解析身份，核对允许层级、可见性与[UUID 格式](/api-edit#实体引用格式) |
+| `four_locale_names_required` | 补齐定义名称所缺的语言，不通过停用条目规避校验 |
+| `immutable_scope`、结构或收录约束失败 | 修正建模计划；补齐发行声明后再提交收录，不能原地换不可变归属 |
+| 401 / 403 / 404 | 分别核对凭据、权限与可见性；不可见和不存在不区分，不能据此探测私有实体 |
+| `version_conflict` | 回读并合并修改，再以最新版本提交 |
+| `idempotency_conflict` | 核对任务是否误用创建键，勿通过换键重复创建 |
+| `invalid_search_cursor` / `search_cursor_expired` / `search_window_exceeded` | 按[检索](/api-search#失败与重试)继续或重新开始，重启后对已收集 ID 去重 |
+| 429 | 尊重 Retry-After 与实际窗口头，降低并发与重复查询 |
+| `auth_unavailable` / `search_unavailable` | 视为依赖故障并退避，不更换有效凭据、不把搜索失败当作零命中 |
+| 数据库故障或无法解释的协议差异 | 保留请求摘要和任务进度，停止依赖故障的写入，报告已完成范围 |
 
-`translations` 是按 locale 分组的对象，不是数组；每个语种含 `title` / `summary` / `aliases`。
-
-`pictures` 的每一项都要带 `source`，其证据规则与 `sources` 相同。
-
-### 4.2 关系写入
-
-```json
-{
-  "relation": {
-    "type": "includes",
-    "source_id": "<集合或作品 UUID>",
-    "target_id": "<作品或集合 UUID>",
-    "position": 0,
-    "attributes": { "context": "<篇目 UUID>" }
-  },
-  "expected_version": 0,
-  "edit_note": "依据官方发行页声明合集中的收录关系",
-  "sources": [{ "kind": "url", "citation": "官方发行页", "url": "https://example.com/release" }]
-}
-```
-
-服务端校验：
-
-- 关系码必须存在且 enabled。
-- 两端 kind 在 `source_kinds` / `target_kinds` 内；字段适用范围看 applicable_kinds，不存在实体业务类型白名单。
-- 属性键属于该关系声明的 `fields`。
-- 不重复（同端点同关系类型同属性）、不超基数；position 仅表示排序，不能靠不同 position 重复建边。
-- 声明 `acyclic` 的关系会做环路检测。
-- 同一条边用不同属性区分（如不同 `credit_role` / `language`）是合法的。
-
-### 4.3 生命周期：合并、退役与下架
-
-合并与退役走管理端点：带 `target_id` 是合并、不带是退役。请求体没有 `action` 字段。
-
-生命周期写入同样要证据：`edit_note` 非空 + `sources` 至少一条，否则 `400 evidence_required`。
-
-```http
-POST /api/catalog/entities/:id/lifecycle
-{ "target_id": "<保留的实体 UUID>", "expected_version": 3, "edit_note": "合并重复建档",
-  "sources": [{ "kind": "url", "citation": "官方条目页", "url": "https://example.com/entry" }] }
-```
-
-合并要求目标同 kind、同归属（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id` 都相同）且已发布，否则 `400 invalid_merge_target`。
-
-源实体写入 `redirect_id`，之后用 `GET /api/catalog/entities/:id/resolve` 跟随到保留实体。改引用与修订记录在同一事务内完成。
-
-下架（`published → draft`）是状态机里唯一的降级入口，权限、证据与乐观锁口径都与上面一致：
-
-```http
-POST /api/catalog/entities/:id/unpublish
-{ "expected_version": 3, "edit_note": "退回草稿修订",
-  "sources": [{ "kind": "self", "citation": "核对官方条目后确认内容有误" }] }
-```
-
-请求体没有 `target_id`，带上返回 `400 invalid_payload`。只接受 `published → draft`；`draft` / `pending_review` / `deleted` / `merged` 都是 `400 invalid_status`。
-
-成功返回与 Save 同形状的完整实体，同一事务写一条修订行与 `entity.unpublished` 事件（下架不计入贡献统计的 `audit_actions`，那里只数删除与合并）。
-
-## 5. 幂等、并发与限流
-
-### 5.1 幂等键
-
-- 只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头。
-- 持久键按操作、用户与请求 key 区分，与业务写入在同一数据库事务提交，跨重启和副本有效。
-- 同键同载荷返回首创响应；同键不同载荷返回 `409 idempotency_conflict`。
-- 结果不确定时使用原 key 和原载荷重试；先核对既有结果，勿盲目换 key 重复创建。
-
-### 5.2 乐观锁
-
-更新与删除不用幂等键，靠 `expected_version`。
-
-收到 `409 version_conflict` 就回读实体取最新 version 再重放，不要盲目重复创建。
-
-### 5.3 限流
-
-目录限流按账号 + 路由计数，匿名按客户端 IP + 路由；账号、组和全局策略可覆盖路由默认。当前计数在每个服务进程内独立。默认额度：
-
-| 路由 | 限额 |
-| --- | --- |
-| `GET /api/catalog/entities` | 120/分钟 |
-| `GET /api/catalog/tags` | 120/分钟 |
-| `POST /api/catalog/expressions/details` | 120/分钟 |
-| `GET /api/catalog/entities/stats` | 120/分钟（另需 `catalog.lifecycle.manage`） |
-| `GET /api/catalog/shelves/feed` | 60/分钟 |
-| `GET /api/users/:id/contributions` | 120/分钟 |
-| `GET /api/catalog/entities/:id/links`、批量 identity、toc、editions、composition | 120/分钟 |
-| `POST /api/catalog/relationships/query` | 60/分钟 |
-| `GET /api/catalog/compare` | 10/分钟 |
-| `POST /api/importer/preview` | 10/分钟 |
-
-写入接口没有路由级限流，但仍受网关按 IP 的约束。
-
-受限路由每个响应都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数）。
-
-超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。策略明确不限时不发窗口头；完整策略和网关边界见[API 概览](/api-overview)。
-
-## 6. 错误码与自愈策略
-
-错误响应统一为 `{ "error": "<机器码>" }`，个别码带补充信息（如 `unknown_field: <字段码>`）。
-
-| 状态码 | `error` | 触发原因 | Agent 自愈动作 |
-| --- | --- | --- | --- |
-| 400 | `invalid_payload` | JSON 形状错误、含未知字段，或 body 后还有多余内容 | 按当前 DTO 重写载荷；字段名以当前契约为准 |
-| 400 | `invalid_payload`（导入子类型：`has_release=true requires mediums` / `release requires mediums`） | 导入载荷声明了发行（`has_release=true`，或带了非空 `release`）却没有 `mediums` | 补 `mediums`；无载体发行改走 `link_mode=append_release_to_work` |
-| 400 | `unsupported_field_for_entity_type` / `invalid_entity_type` / `invalid_link_mode` | 导入载荷里声明了该 `entity_type` 没有落点的字段（如 `mediums[].media_category`、`release.cover_aspect`），或 `entity_type` / `link_mode` 越出允许枚举 | 删掉没有落点的字段或补上对应结构；枚举取 `work` / `artist` / `organization` / `character` 与 `new_work` / `append_release_to_work` / `create_relation`；预览与落库同一预检、零写入 |
-| 400 | `invalid_id` | 路径或结构字段里的 UUID 解析失败 | 用查重与详情响应里的真实 id |
-| 400 | `id_must_be_empty` | 创建时带了 `entity.id` | 创建一律留空 id、`expected_version` 传 0 |
-| 400 | `evidence_required` | 缺 `edit_note`，或 `sources` 为空 | 补一段具体修改说明 + 至少一条来源 |
-| 400 | `invalid_source` | 来源项非法：`kind` 不是 url / publication / self，`citation` 为空，或 `url` 不是合法 HTTP(S) | 按规则重写 `sources` |
-| 400 | `invalid_reference` | 被引用实体不存在、kind 不符、对调用者不可见或已合并 | 先读该实体确认可见性；合并过的先用 `/resolve` 取当前身份 |
-| 400 | `constraint_violation` | 违反库内约束：跨 Work 的父子、跨 Release 的载体父子、唯一索引冲突 | 检查 `parent_id` 与 `position` 是否越过所属域 |
-| 400 | `immutable_scope` | 想改 `kind` / `work_id` / `release_id` / `medium_id` | 换归属要重建实体；重复建档走生命周期合并 |
-| 400 | `use_lifecycle_endpoint` | 用实体写入提交 `deleted` / `merged`，或把已发布条目降级 | 停用/合并改走 `POST /api/catalog/entities/:id/lifecycle`；退回 `draft` 改走 `POST /api/catalog/entities/:id/unpublish`（需 `catalog.lifecycle.manage`） |
-| 400 | `translation_required` | 发布态一条 `translations` 都没有 | 至少补一个语种的翻译行再发布 |
-| 400 | `four_locale_names_required` | 定义 / 货架 / 外部库的名称缺语种（冒号后列出缺失项，如 `four_locale_names_required: zh-TW,ja-JP`） | 找齐四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`）后重提定义草稿；不要靠停用条目绕开校验 |
-| 400 | `parent_required` | 缺结构归属：`content_unit` / `expression` 缺 `work_id`、`medium` 缺 `release_id`、`track` 缺 `medium_id` | 补归属，或改到正确的层级提交 |
-| 400 | `undeclared_release_subject` | Track 收录的表达所属 Work 没有在该发行的 `subjects` 中声明 | 在该发行上补 `subjects`，再重放 Track |
-| 400 | `invalid_relation_type` / `invalid_endpoints` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系语义校验失败：码不存在或未启用、端点 kind 不允许（自环也走这里）、重复边、超基数、成环 | 只用 definitions 中 enabled 的码与允许的端点；自环一律不支持；先删冲突旧边再建 |
-| 400 | `invalid_term` / `invalid_position` | 词表值或排序值不在允许集合内 | 用 definitions 里对应字段的 vocabulary.terms；实体字段以 applicable_kinds 为准 |
-| 400 | `invalid_status` | 状态值不在 `draft` / `pending_review` / `published` / `deleted` / `merged` 之内；或状态机不允许该动作（下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体） | 状态值按五档写；动作不合法先 `GET` 读回当前 `status`：已是 `draft` 不必下架，`deleted` / `merged` 要恢复只能新建 |
-| 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段码不存在 | 从 definitions 取字段集与 `searchable`，不要按名称猜 |
-| 401 | `authentication_required` | 需要登录的端点没有有效令牌（会话 / OAuth 令牌缺失或验签失败） | 重新登录或换用 OAuth 访问令牌 |
-| 401 | `invalid_token` | **PAT** 无效 / 已吊销 / 已过期 / 账号被封禁（不细分原因；读端点也照此返回） | 核对是不是把 `mfp_` 令牌写错或已被吊销；换一张新令牌，不要重试同一张 |
-| 403 | `forbidden` | 已登录但缺对应权限码，或不是该条目的可写者 | 核对令牌 `permissions`；发布、合并归生命周期权限 |
-| 404 | `not_found` | 不存在，或对调用者不可见（不区分两者） | 用查重响应里的 id；未发布条目只对创建者与持权限者可见 |
-| 409 | `idempotency_conflict` | 同一个创建键复用了不同载荷 | 核对原请求与返回结果；同一操作重试保持原键和原载荷 |
-| 409 | `version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
-| 503 | `search_unavailable` | 搜索未配置、未就绪或故障 | 等待恢复，不把失败当成零命中，不切换数据库文本搜索 |
-| 400 | `invalid_search_cursor` / `search_cursor_expired` / `search_window_exceeded` | 搜索 cursor 不匹配、快照过期或 offset 越界 | 保持查询参数继续 cursor；过期后从首请求重启 |
-| 429 | `rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避后重试；命中限流的路由每个响应都带 `X-RateLimit-*`，可用 `Remaining` / `Reset` 提前节流 |
-| 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） | 停止写入，把错误码与请求摘要一起上报 |
-| 503 | `auth_unavailable` | PAT 请求问不到账号服务（内省不可达 / 未配置 `AUTH_URL`） | 这是依赖故障：**退避重试**，不要当成凭据问题去换令牌 |
-
-遇到表里没有的码：先用最小载荷复现一次排除自身形状问题，再核对 `GET /api/openapi.json` 与 `GET /api/catalog/definitions`；仍无法解释就停止写入并按「实现缺口」上报，不要用近似数据填充，也不要绕过接口改库。
-
-## 7. 提交顺序
-
-按依赖顺序提交，每一步读取响应并保存 id，失败就停下，不要用默认值填补缺失来源：
-
-```text
-agent / work  →  content_unit / expression  →  release（声明 subjects）  →  medium  →  track  →  relations
-```
-
-编目工具与操作流程由技能维护，安装与选择见 [AI Agent 协作指南](/agent-integration)。
-
-## 8. 相关文档
-
-- [AI Agent 协作指南](/agent-integration)：技能选择、安装更新与授权边界
-- [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
-- [API 概览](/api-overview)：能力分组、分页、限流与可见性
-- [实体查询与详情](/api-entities)：过滤参数与详情、关系、收录反查
-- [元数据目录教程](/catalog)：固定层级与编目边界
-- [权威编目与审查准则](/curation-guide)：题名、证据与审查口径
+未知机器码先核对实例契约；仍无法解释时报告差异，不绕过接口直接改库。

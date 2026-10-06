@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitepress';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pageRedirects } from './redirects.mjs';
 
 // 导航与侧栏的事实来源是每页 frontmatter 的 group / order / title：
 // 页面属于哪个分区、排在第几、显示什么名字，都只写在页面里；本文件只声明
@@ -93,6 +94,15 @@ export default defineConfig({
   lang: 'zh-CN',
   lastUpdated: false,
   cleanUrls: true,
+
+  // Docker/sirv 提供 .html 及无扩展名地址；旧页面只保留浏览器跳转。
+  buildEnd(site) {
+    for (const [from, to] of Object.entries(pageRedirects)) {
+      const target = `${site.site.base}${to}`;
+      writeFileSync(join(site.outDir, `${from}.html`),
+        `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0;url=${target}"><link rel="canonical" href="${target}"><title>页面已合并</title></head><body><a href="${target}">前往合并后的文档</a></body></html>`, 'utf8');
+    }
+  },
 
   themeConfig: {
     siteTitle: 'MetaFusion Docs',
