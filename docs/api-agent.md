@@ -13,7 +13,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
 :::
 
-接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录教程](/catalog)；逐步操作流程见 [AI Agent 协作指南](/agent-integration)。
+接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录教程](/catalog)；推荐的技能接入入口见 [AI Agent 协作指南](/agent-integration)。
 
 ## 1. 运行时事实来源
 
@@ -265,11 +265,11 @@ POST /api/catalog/entities/:id/unpublish
 agent / work  →  content_unit / expression  →  release（声明 subjects）  →  medium  →  track  →  relations
 ```
 
-完整可照抄的脚本（检索 → 建链 → 关系 → 回读）见 [AI Agent 协作指南](/agent-integration)。
+编目工具与操作流程由技能维护，安装与选择见 [AI Agent 协作指南](/agent-integration)。
 
 ## 8. 相关文档
 
-- [AI Agent 协作指南](/agent-integration)：身份设定、7 步 SOP、盒装建模、示例脚本与排错
+- [AI Agent 协作指南](/agent-integration)：技能选择、安装更新与授权边界
 - [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
 - [API 概览](/api-overview)：能力分组、分页、限流与可见性
 - [实体查询与详情](/api-entities)：过滤参数与详情、关系、收录反查
