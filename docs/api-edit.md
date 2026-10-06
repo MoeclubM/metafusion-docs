@@ -7,7 +7,7 @@ group: "api"
 
 # 新建与编辑
 
-目录写入只有四个入口，按层级逐条写入，每次请求只落一条实体或一条关系。
+实体、关系和收录通过对应端点写入；合并、停用与下架使用生命周期入口。按依赖顺序提交，每次请求分别处理自己的修改。
 
 | 用途 | 端点 |
 |---|---|
@@ -26,7 +26,7 @@ group: "api"
 | `catalog.entity.edit` | 创建与编辑实体（含维护公开条目） |
 | `catalog.relation.edit` | 创建 / 替换 / 删除关系 |
 | `catalog.lifecycle.manage` | 合并、退役、下架（`published → draft`），以及发布/处置他人的未发布条目 |
-| `catalog.definitions.manage` | 起草、校验、发布动态定义 |
+| `catalog.definitions.manage` | 检查并保存动态定义与目录配置 |
 | `catalog.import.submit` | 调用外部导入的预览与落库 |
 | `catalog.shelves.manage` | 维护货架规则 |
 | `storage.asset.upload` | 上传与登记自己的资产 |
@@ -34,7 +34,7 @@ group: "api"
 `storage.asset.upload` 覆盖 `/api/storage/upload/*` 与 `POST /api/storage/bind`，`member` 组默认持有该码。
 
 权限码由账号服务装进权限组、随访问令牌的 `permissions` 声明下发（admin 组带 `*` 通配）。
-只有完全没有 `permissions` 声明的老令牌才按历史角色兜底：admin 放行全部目录码，editor 放行 `catalog.entity.edit`。
+权限判定只看 `permissions`；缺失或空权限集合不会按角色补授。
 
 ::: warning 注意
 没有 `catalog.entity.edit` 的登录用户仍可写，但只能把条目存成 `draft` / `pending_review`，
@@ -83,8 +83,9 @@ POST /api/catalog/entities
 - 比例只是展示建议（音乐 1:1、影视 2:3、书籍 3:4），展示层按封面图自然比例推断
 - `external_ids` 的键必须是已登记的外部权威库（见 `GET /api/catalog/external-databases`）
 - 请求体里出现未知字段一律 `400 invalid_payload`（服务端按严格模式解码）
-- 幂等：带 `Idempotency-Key` 请求头时，同键重放直接返回首创结果
-- 幂等缓存为进程内存 24 小时；键按「路由 + 用户 + 键」缓存，不做载荷哈希
+- 创建实体与关系可带 `Idempotency-Key`，键按操作、用户和请求键区分。
+- 同键同载荷重放首创响应；同键不同载荷返回 `409 idempotency_conflict`。
+- 幂等记录与业务写入在同一数据库事务提交，可跨进程重启和副本复用。新的逻辑操作使用新的键；不确定是否成功时重试原载荷和原键。
 
 ### 层级与归属字段
 
@@ -103,7 +104,7 @@ POST /api/catalog/entities
 
 结构字段按层级收敛：发行版没有 `work_id`，收录关系只能经 `subjects`；`contents` 只对 `track` 有效，`subjects` 只对 `release` 有效。给某个 kind 传它用不到的结构字段会返回 `400 invalid_structural_field: <字段码>`，缺必填归属返回 `400 parent_required`。
 
-正确的顺序是按层级自下而上补齐：先 `work` → `content_unit` → `expression`，再 `release` → `medium` → `track`，最后按需建关系。
+按依赖顺序建立：先 `work` → `content_unit` → `expression`，再 `release` → `medium` → `track`，最后按需建关系。
 
 ::: warning 注意
 `work_id` / `release_id` / `medium_id` / `kind` 在更新时不可改（`400 immutable_scope`），
@@ -153,7 +154,7 @@ DELETE /api/catalog/tracks/:id/contents/:position # 删除，仍须请求体
 }
 ```
 
-inclusion.sources 可独立填写；省略时新/改变的收录使用本次编辑来源。替换的 inclusion.position 可以不同于 URL 中旧位置。删除只带 expected_version/edit_note/sources。每次成功产生 Track 修订；409 后回读再合并，不盲重放。旧整实体 PUT 省略 sources 时，新服务保留未改变收录的证据；旧记录的空来源不会自动补造。
+inclusion.sources 可独立填写；省略时新/改变的收录使用本次编辑来源。替换的 inclusion.position 可以不同于 URL 中旧位置。删除只带 expected_version/edit_note/sources。每次成功产生 Track 修订；409 后回读再合并，不盲重放。未改变的收录保留原证据；不存在的历史来源不会自动补造。
 
 ## 关系
 
@@ -310,52 +311,38 @@ Bangumi 关系导入范围只含署名与角色关系。上游的 work↔work �
 
 ## 动态定义管理
 
-动态定义（字段、词表、关系、模板、场景与结构显示名）由管理员维护，全部需要 `catalog.definitions.manage`：
+字段、词表、关系、模板与场景通过完整文档和 ETag 保存，详情见[动态定义与配置](/api-definitions)。实体编辑与定义编辑使用不同的并发标记，不能互换 version 和 etag。
 
-| 端点 | 作用 |
-|---|---|
-| `GET /api/admin/catalog-definitions` | 读取单份生效文档与 `etag` |
-| `POST /api/admin/catalog-definitions/impact` | 只读回放请求体中的 `document`，返回阻断项和悬挂引用警告 |
-| `PUT /api/admin/catalog-definitions` | 提交完整 `document`、`expected_etag`、编辑说明与来源；服务端事务内再次检查影响，过期标记返回 `409 version_conflict` |
+## 编辑示例
 
-定义只保留一份生效配置。`etag` 仅防止多个编辑器互相覆盖，不能用来读取历史文档；定义版本、对比和回滚端点已废弃。
+下面的 Python 示例先读取完整实体，只修改题名，再提交当前 version。凭据使用环境变量，示例来源与目标须按实际任务替换。
 
-::: warning 注意
-定义、货架与外部权威库的名称是四语硬约束：每个名称都要带 `zh-CN`、`zh-TW`、`en-US`，
-并且至少带 `ja` 或 `ja-JP` 之一。缺任一项，写入直接失败并返回
-`400 four_locale_names_required: <缺失语种>`（多个缺失项以逗号分隔，如 `four_locale_names_required: zh-TW,ja-JP`）。
-:::
+```python
+import os
+import requests
 
-四语约束作用于定义文档里启用中的条目：
-
-- 字段（`fields`，含 `applicable_kinds` 与嵌套子字段；字段单位 `unit` 只在声明了单位时校验）
-- 词表与词项（`vocabularies` / `terms`）、关系（`relations` 的 `names` / `reverse_names` / `group_names`）
-- 模板与模板分区（`templates` / `sections`）、场景方案（`schemes`）
-- 货架 `names`（`/api/admin/shelves`）与外部权威库 `names`（`/api/admin/external-databases`）
-
-停用的字段 / 词项 / 关系 / 场景不参与校验，存量两语条目可以原样保留；空 `group_names` 视为未声明。
-
-判定只看「键在且非空」，不要求译文与英文不同：`CD`、`Spotify`、`ISBN` 这类专有名词四语同形是合法的。
-
-## 示例
-
-```bash
-# 先读取完整实体，取回 version 后再整实体替换
-curl "/api/catalog/entities/<id>" -b "mf_session=<cookie>"
-
-curl -X PUT "/api/catalog/entities/<id>" \
-  -H "Authorization: Bearer <session-token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entity": { "id": "<id>", "kind": "work", "title": "修正标题", "translations": {}, "attributes": {} },
-    "expected_version": 2,
-    "edit_note": "fix typo per official site",
-    "sources": [{ "kind": "url", "citation": "官网标题", "url": "https://example.com" }]
-  }'
+base = os.environ["METAFUSION_BASE_URL"].rstrip("/") + "/api"
+headers = {"Authorization": "Bearer " + os.environ["METAFUSION_TOKEN"]}
+entity_id = "<entity_uuid>"
+current = requests.get(f"{base}/catalog/entities/{entity_id}", headers=headers, timeout=15)
+current.raise_for_status()
+entity = current.json()
+version = entity["version"]
+entity["title"] = "<经来源核实的题名>"
+payload = {
+    "entity": entity,
+    "expected_version": version,
+    "edit_note": "依据来源修正基础题名",
+    "sources": [{"kind": "publication", "citation": "<具体出版物与页码>"}],
+}
+result = requests.put(f"{base}/catalog/entities/{entity_id}", headers=headers, json=payload, timeout=15)
+result.raise_for_status()
 ```
+
+409 时停止并回读，合并新的修改后再提交；不要把旧完整实体直接覆盖回去。
 
 ## 相关页面
 
 - [API 概览](/api-overview)：错误码与限流
 - [实体查询与详情](/api-entities)：写之前先把实体读全
-- [AI Agent 工具规范](/api-agent)：把写入契约包成工具定义
+- [AI Agent API 与工具规范](/api-agent)：把写入契约包成工具定义

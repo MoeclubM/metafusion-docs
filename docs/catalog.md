@@ -1,290 +1,79 @@
 ---
-title: "元数据目录核心架构"
-description: "实体责任骨架、动态定义、前端路由与能力清单。"
+title: "元数据目录教程"
+description: "用歌曲、图书和盒装示例理解作品、表达、发行与收录。"
 order: 10
 group: "model"
 ---
 
-# 元数据目录核心架构
+# 元数据目录教程
 
-MetaFusion 采用八类实体骨架与动态目录定义，核心统一入口为 `/api`。新增能力是否已部署，以目标实例的 OpenAPI 和 definitions 为准。
+目录把作品身份、具体内容与发行记录分开保存。这样可以复用同一份录音或正文，同时保留每次发行的编号、包装和实际目录。
 
-默认运行仅需依赖 PostgreSQL，即可提供完备的元数据建档、层级关联、多版本比对与协同审核能力。外围资源归档与下载中心完全解耦。
+## 八类条目
 
-## 固定层级与可选结构
-
-| 实体 | 用途 | 示例 |
+| 条目 | 回答的问题 | 例子 |
 | --- | --- | --- |
-| Agent | 个人、组织、角色身份 | 摄影师、独立开发者、配音演员、虚构角色 |
-| Collection | 有序聚合或企划 | 摄影系列、跨媒体企划 |
-| Work | 独立创作身份 | 歌曲、专辑、写真集、小说、独立游戏 |
-| ContentUnit | 同作品内的逻辑目录 | 第三章、编号 78 的动画集、游戏路线 |
-| Expression | 属于一个 Work 的具体表达，可关联该作品的 ContentUnit | 原文、译文、翻唱录音、BD 剪辑 |
-| Release | 有来源依据的公开发行，subjects 可关联多个 Work | 普通版、限定版、地区版、个人免费数字版 |
-| Medium | 同发行内的承载单元，可嵌套 | CD、MV BD、纸质册、黑胶 |
-| Track | 同载体内的收录位置，可嵌套 | A1、光盘菜单、章节位置 |
+| 主体 Agent | 谁参与了创作？ | 作者、乐团、出版社、虚构角色 |
+| 集合 Collection | 哪些作品属于同一企划或系列？ | 跨媒体企划、作品系列 |
+| 作品 Work | 这是什么独立创作？ | 歌曲、专辑、小说、游戏 |
+| 内容单元 ContentUnit | 作品内部如何分章或分集？ | 第三章、第 78 集、游戏路线 |
+| 表达 Expression | 具体是哪一份内容？ | 原唱录音、翻唱、译本、导演剪辑 |
+| 发行 Release | 哪一次公开出版或发布？ | 普通版、限定版、地区版、免费数字版 |
+| 载体 Medium | 这一发行由哪些承载单元组成？ | CD、BD、纸质册、数字集 |
+| 收录位置 Track | 内容在载体的什么位置？ | 第 1 轨、A1、页码范围或菜单项 |
 
-字段与场景可以组合；简单作品无需凑齐全部层级。实体不再声明业务 `types`，描述性分类使用开放标签。`position` 为非负排序整数，`number` 为原始印刷编号。
+这些是固定种类。描述性分类用标签，可填写的附加字段来自站点定义。简单作品只建立有来源的条目，不必凑齐八类。
 
-Expression 的 `work_id`、Medium 的 `release_id` 和 Track 的 `medium_id` 为固定所属关系，普通编辑不可跨域移动。目录父子必须同域且无环。
+## 歌曲与专辑：复用同一录音
 
-### Track 收录与 contents
+歌曲 A 是一个 Work，原唱录音 A1 是它的 Expression。单曲、专辑和精选集各建自己的 Release；如果收录的是同一份录音，它们都引用 A1。
 
-Track 的 `contents` 是实际收录的唯一来源：`expression_id`、`position`、`locator`、可选 `attributes` 与直接证据 `sources`。曲序由 Track.position 表示；同一 Track 内多段内容的次序由 contents[].position 表示。
-
-允许跨作品引用，但被收录表达的 Work 必须明确列入发行的 `subjects`。不要重复创建同一个录音。
-
-专辑的概念编排使用有序 `includes` 关系；实际版次顺序以载体和 TrackContent 为准。
-
-### 整体表达与部分表达
-
-整本译文和各章译文、整季剪辑和各集正片都属于 Expression。通过用途为 `expression_composition` 的关系建立“整体 → 部分”（种子 `expression_part`），不用 Expression.parent_id，也不用为每个发行复制正文。
-
-整体与部分必须属于同一 Work；部分按关系 position 排序，同一整体内不能重复部分或顺序，跨同用途关系码共同检查无环。各章的译文仍可分别用 `translation_of` 指向原文。此关系描述内容组成，实际出版或光盘目录仍由 Medium / Track / contents 表达。
-
-### 显式版本组
-
-普通、限定、地区、CD 与黑胶版各建独立 Release。用途为 `release_group` 的关系（种子 `edition_of`）将这些发行显式归到同一个 Work 或 Collection；每个 Release 在全部同用途关系中只能归属一个版本组。
-
-有创作身份的专辑 Work 可直接作为版本组；仅用于归拢同一商品的发行版时可以建立 Collection。共同 `subjects` 表示收录了相同作品，不证明是同一组版本：精选集收录某首歌，不因此成为该单曲的另一个版本。
-
-### locator 与 schemes 场景
-
-`locator` / `subject_attributes` / `inclusion_attributes` 均走 definitions 的组字段声明：
-
-- 实体写入时先按拥有者 kind 匹配 `definitions.schemes` 同槽位场景。
-- Track 的定位和收录附加字段还可按所属 Medium 的 `format` 匹配 `medium_formats`（空为不限）。
-- 命中方案后取并集 fields 收敛可用子字段与必填，`relative_to` 锚点置前；无匹配时回退全局组。
-- 改变 Medium 格式会回放现有 Track，不允许留下与新方案冲突的定位。
-- 任一匹配方案声明 `require_range` 时，`locator` 至少一个 `semantics=content` 子字段非空，否则报 `range_required`。
-
-独立字段 `isbn` 属于 Release；`duration_source` 是指向 Expression 的实体引用，写入层级由 applicable_kinds 决定（源码种子设为 Work）。
-
-### role 词表与附赠分组
-
-`role` 词表中的可选 `is_bonus` 是发行详情的附赠分组语义。种子将 `supplement` 标为附赠。
-
-旧定义缺失该标记时，种子合并只补缺失值，后台明确关闭的 `false` 不会被重新打开。
-
-新增或调整词项可在 Definitions GUI 中维护，不需要前端新增硬编码判断。
-
-### 动态定义与结构声明
-
-后台 GUI 可新增和编辑字段、词表、模板、场景方案与实体关系。实体属性的可写层级由字段 `applicable_kinds` 决定。
-
-`definitions.structure` 用于向前端描述固定归属外键和收录入口。非空结构定义必须保留数据库实际支持的字段、目标 kind、必填性、Release `subjects` 与 Track `contents`，否则配置保存返回 `fixed_structure_mismatch`。
-
-扩展骨架外键或收录容器需要数据库与服务端改动。
-
-### 关系类型
-
-关系类型全部由服务端 definitions 驱动，运行时清单以 `GET /api/catalog/definitions` 为准。
-
-- 署名类关系（work/content_unit/expression/release → agent）含 `created_by` / `performed_by` / `composed_by` / `lyricist_of` / `arranged_by` / `directed_by` / `written_by` / `illustrated_by` / `narrated_by` / `voiced_by` / `photographed_by` / `modeled_by` / `developed_by`。
-- 译者用 `translated_by`（work / content_unit / expression → agent，组 `credits`），不再挤占通用兜底。
-- 角色登场为 `character_in`（agent → work/collection）。番位落 `character_rank` 词表项，来源职位原文落 `credit_role`。
-- 当来源职位没有贴切关系码时用通用兜底 `credit_for`（work/content_unit/expression/release → agent，职位原文落 `credit_role`）。已有精确关系码时不再重复建边。
-- 关系通用可选字段为 `role`、`credit_role`、`character_rank`、`context`、`character`、`language`、`begin_date`、`end_date`、`scope`。
-- 详情页的关系分区标题与顺序同样读各关系定义的分组声明，前端不写死关系码名单。
-
-关系还可在 GUI 声明同域限制 `scope`、跨关系码的无环组 `cycle_group`、同源顺序唯一 `unique_position`，以及实体引用属性的归属规则 `reference_scopes`。例如 `{"context":"source_work"}` 要求 context 与关系源端属于同一 Work；不满足固定归属条件的关系无法保存。
-
-### 模板选择与区块
-
-可选字段 `creation_form` 描述歌曲、专辑、小说等创作形态，只用于属性和模板匹配，不改变实体 kind 或可写字段范围。管理员可在 GUI 新增词项与模板。
-
-模板的 `match` 是 exists / equals / contains 条件的 AND，`priority` 决定选择优先级；最高优先级并列时显示通用事实布局。未配置 match 的模板不参与自动选择，仍可在编辑器中手工选用；显式 `[]` 是该 kind 的兜底条件。系统不按已填字段猜测作品类别。
-
-`blocks` 配置受支持区块的显示与顺序：directory、composition、editions、occurrences、credits、relations、resources。省略时继承布局，`[]` 隐藏可选区块。通用详情按配置组织页签，发行详情按配置排列已有区块；固定事实和修订入口保留。新增关系码、字段、词项、条件和区块顺序均可通过后台完成；增加实体骨架或全新的组件行为仍需开发。
-
-## 前端路由
-
-- 八种实体的规范详情地址均为 `/catalog/[id]`，kind 只选择内容布局；`?edit=1` 直达编辑。
-- 探索为 `/explore`，对比为 `/compare`。
-- 创建入口为 `/new`，不带层级时落到编目枢纽 `/contribute`。
-- **管理后台为 `/admin`**，只管理元数据目录：实体、定义、货架、外部库、导入审核。账号 / 社区 / 存储的管理台已各自独立，入口见 [平台概览](/overview) 的「管理台按域拆分」。目录后台按权限展示定义、货架、审核与合并工作面；审核会核对列表中查看过的版本，内容更新后须重新读取再处理。
-
-发行目录可一次读取 `GET /api/catalog/releases/{id}/toc`：返回发行、按位置排序的 Medium 与 Track、去重的可见 Expression 及当前定义 `etag`。响应基于同一数据库快照；不可见子项不会泄露。
-
-Expression 内容页使用 `GET /api/catalog/expressions/{id}/composition` 展示有序 parts 与所属 wholes。发行详情使用 `GET /api/catalog/releases/{id}/editions` 展示显式 group 与 editions；未分组时返回 `group: null` 和空 editions。两个接口均按调用者可见性过滤，并带 `definition_etag`，组合查询返回直接组成关系。
-
-单实体接口仍可用于编辑与独立详情。
-
-## 七个编目例子
-
-1. **写真**：创建摄影师 Agent、写真 Work，按来源添加摄影与个人创作标签；以作者自述为来源。没有文件、出版社或发行记录也能发布条目。
-2. **独立游戏**：游戏 Work 用开放标签描述独立游戏与视觉小说特征；路线是 ContentUnit；有创作差异的正文版本是 Expression；不同平台公开发布是 Release。安装包编码与压缩方式属于文件模块。
-3. **翻唱与单曲**：原歌曲 Work 下创建翻唱 Expression，关联演唱者和原表达。单曲发行、专辑、精选集的 Track 可以复用同一 Expression。实质改编且形成新作品身份时另建 Work。
-4. **普通／BD 限定／特装专辑**：一个专辑 Work、三个 Release。普通版含 CD；限定版含 CD 与 BD；特装版再记录盒内附件。CD 收录歌曲录音，BD 收录演唱会或 MV 表达，发行 subjects 同时声明这些 Work。
-   - 立牌写 `attachments`；店铺赠品写 `store_bonuses`，不能误建为盒内 Medium。
-5. **小说**：同一 ContentUnit“第三章”对应原文和译文 Expression，通过 `translation_of` 关联；整本译文用 `expression_part` 有序包含各章译文。精装、文库、电子版各建 Release，按实际目录建 Track 并复用正文，页码定位注明 `relative_to=medium`。
-6. **动画与电影**：分集 ContentUnit 保留编号 `78`、`EX`；整季表达可有序包含分集表达。确有剪辑、字幕或音轨内容差异时区分 Expression；同一正片在 WEB、BD、DVD 产品中可以复用。各产品建 Release 与 Medium；WEB-DL、REMUX 和编码属于归档与媒体分析。
-7. **一人多角**：多条 `voiced_by` 关系保存同一作品、演员以及不同 `character` 引用；`language`、`context` 和 `scope` 说明语言与适用篇目。服务端按上下文判重，不按演员名去重。
-
-官方案例参考：[致並跡](https://bushiroad-music.com/musics/brmm-11026/)、[迷跡波黑胶](https://bushiroad-music.com/musics/brmm-11011/)、[Re:ゼロ条目](https://bgm.tv/subject/633836)。示例是建模说明，不代表已向实例导入这些资料。
-
-### 音乐完整映射示例
-
-以下名称与版本用于说明结构，不断言上面的官方商品具有这些版次：歌曲 A 是独立 Work，其录音 A1 是 Expression；专辑 B、精选集 C 各有自己的 Work，经 includes 收录歌曲 A。
-
-| 发行 | 实际承载与收录 | 显式版本组 |
-| --- | --- | --- |
-| 歌曲 A 单曲 CD | CD → 第 1 轨 → 录音 A1 | 歌曲 A Work |
-| 专辑 B 普通版 | CD → 第 3 轨 → 录音 A1 | 专辑 B Work |
-| 专辑 B 限定版 | CD 复用相同录音；附赠 BD → MV Track → MV 表达 | 专辑 B Work |
-| 专辑 B 地区版 | 按实物保存独立品番、地区及增删的曲目 | 专辑 B Work |
-| 专辑 B 黑胶版 | 黑胶 → A1 等 Track.number → 对应录音 | 专辑 B Work |
-| 精选集 C | CD → 第 8 轨 → 同一录音 A1 | 精选集 C Work |
-
-每个发行 subjects 声明实际收录的全部 Work，包括歌曲 A 与附赠 MV 所属 Work。MV 若只是歌曲的视听表达，可属于歌曲 A；来源证明其为独立创作时另建 Work。普通版没有的 BD 不放进普通版，重录或内容不同的音源另建 Expression；仅承载格式不同不复制录音。
-
-## 通过后台配置
-
-管理员打开目录控制台 `/admin`（旧 `/catalog/admin` 已重定向），Definitions 页签覆盖 fields / vocabularies / relations / templates / schemes / structure：
-
-1. 添加稳定代码与四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`），选择固定实体层级。
-2. 在共享字段库定义文本、多语言、数字、日期、布尔、网址、词表、实体引用、列表或字段组；以 applicable_kinds 声明实体适用层级，在关系和场景中复用字段。
-3. 定义关系的正反向名称、端点层级、上下文、基数、对称性、无环和显示分组；选择表达组合或版本组用途时 GUI 填入必要规则。通用关系也可配置同域、共同无环组、顺序唯一与实体引用归属约束。
-4. 定义模板分区、字段顺序、列表列、目录模式与关系分区顺序（`relation_groups`），再编辑匹配条件、优先级和可选区块。用上下移按钮调整区块顺序；条件全部满足才参与选择。
-5. 在 schemes 页签按槽位声明场景子集：kinds 白名单、Track 所属载体的 `medium_formats`、可用子字段、必填子集，以及仅 locator 可用的 `require_range`。黑胶示例 `vinyl_track_locator` 默认关闭，可在后台按需启用或删除。
-6. 在 `role` 词表中用“作为附赠内容展示”控制发行页的附赠分组；新增用途词项不需要改前端代码。
-7. 检查既有数据影响，填写编辑说明与来源，带当前 expected_etag 保存完整配置。服务端事务内再次检查；过期 ETag 返回 409 version_conflict。定义没有历史版本、服务端草稿或回滚入口。
-
-新增或收窄定义前执行影响检查。停用值可保留显示，不能作为新增值使用；删除是否允许以实际既有数据影响为准。
-
-保存后表单和详情读取新的定义；无专用模板的实体使用通用展示。
-
-名称缺语种会在保存配置时被拒：`400 four_locale_names_required: <缺失语种>`。
-
-校验只覆盖启用中的字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案，以及货架与外部权威库的 `names`；停用条目与空 `group_names` 不参与校验。
-
-## 写入与审核
-
-运行时结构见 `/api/openapi.json`，动态代码见 `/api/catalog/definitions`。
-
-写入前先查 `/api/auth/me`，确认令牌里的权限码（`catalog.entity.edit` 等）——授权判定走权限码，不看角色名。
-
-```json
-{
-  "entity": {
-    "kind": "work",
-    "title": "城市光影",
-    "original_language": "zh-CN",
-    "translations": {"zh-CN": {"title": "城市光影", "summary": "作者独立摄影作品", "aliases": []}},
-    "status": "draft",
-    "attributes": {},
-    "external_ids": {},
-    "pictures": [],
-    "position": 0,
-    "number": "",
-    "contents": [],
-    "subjects": []
-  },
-  "expected_version": 0,
-  "edit_note": "依据作者自述建立作品身份",
-  "sources": [{"kind": "self", "citation": "作者说明作品题名与创作范围"}]
-}
+```text
+歌曲 A（Work）
+  └ 原唱录音 A1（Expression）
+      ↑ 收录                         ↑ 收录
+单曲发行 → CD → 第 1 轨       专辑发行 → CD → 第 3 轨
+ Release  Medium  Track        Release  Medium  Track
 ```
 
-提交到 `POST /api/catalog/entities`。编辑前 GET 完整实体，保留未修改字段；PUT 带当前 `expected_version`。409 需要回读与合并，不能盲目覆盖或重试创建。创建后回读实体、关系、收录及修订历史。
+新录音或有实质内容差异的版本另建 Expression。仅格式、载体或编码不同，不足以证明是新的录音。
 
-### 条目编辑器
+每个发行的 `subjects` 声明实际收录表达所属的全部 Work。专辑作为独立作品时，可用有序关系记录概念编排；实际版次的曲序仍以载体和收录位置为准。
 
-八种实体使用同一个分区编辑器。基本信息保存题名、语言、状态和多语简介；归属与收录按实体层级显示固定外键、Release subjects 或 Track contents；附加信息提供字段搜索与布局模板；图片与标识管理封面和外部编号；关系维护语义关联；说明与来源填写本次编辑依据。
+## 图书与分集：目录和具体内容分开
 
-切换分区或应用布局模板不会清空已填写内容。顶部持续显示正在编辑的条目与保存按钮，也可用上一／下一分区逐步填写；分区导航支持方向键、Home 和 End。缺少题名或编辑证据时会切到对应分区并显示错误。图片上传完成后才允许保存；刷新或关闭浏览器页面时，未保存修改会触发浏览器提示。
+一本小说是 Work，“第三章”是 ContentUnit。原文和译文各建 Expression，并关联这一章；它们之间的派生关系说明“翻译自”。
 
-已有条目的关系操作逐条立即保存，使用当前说明与来源；保存实体不会把这些关系操作合成一个事务。新条目的关系先放入草稿，在实体创建成功后依次提交；关系提交失败时保留失败草稿并提示，需处理后再保存，不能重复创建实体。实体和收录编辑仍受 `expected_version` 约束。
+整本译文可以通过表达组合关系有序包含各章译文。精装、文库和电子版分别建 Release，按实际目录和页码收录这些表达。
 
-### 单条收录编辑
+动画采用同样方式：稳定分集是 ContentUnit，具体正片或剪辑是 Expression。正式题名里的季数或卷号若用于区分独立作品，按来源保留；同作品内部的部分才使用内容单元。
 
-Track 内容页可以单独增加、替换或删除一个收录，避免整实体替换遗漏其他记录：
+## 盒装与附赠：按实物记录
 
-| 操作 | 接口 | 请求 |
-| --- | --- | --- |
-| 增加 | `POST /api/catalog/tracks/{id}/contents` | inclusion + expected_version + edit_note + sources |
-| 替换或重排 | `PUT /api/catalog/tracks/{id}/contents/{position}` | 同上；URL 为回读的旧位置，inclusion.position 为新位置 |
-| 删除 | `DELETE /api/catalog/tracks/{id}/contents/{position}` | expected_version + edit_note + sources，仍须请求体 |
+盒装先建立一次真实发行，再按实物建立分盘和收录。每个 Track 引用实际内容的 Expression，发行声明对应的全部 Work。
 
-inclusion 为 `{expression_id, position, locator, attributes?, sources?}`。expected_version 始终取拥有者 Track；成功后生成 Track 的新修订，其他收录保持，409 后须回读再合并。不可见历史收录在单条编辑中保留，不能通过猜测位置删除。
+盒装品番属于盒装发行，不能挂到其中某部作品的单品发行上。只有来源证明汇编本身有独立创作身份时，才另建汇编 Work；用于归拢版本或企划时可以使用 Collection。
 
-旧客户端整实体 PUT 省略收录 sources 时，新服务保留未改变事实的来源；新增或改变收录默认使用本次编辑证据。已有收录缺来源不会在数据库升级时自动补造，历史修订仍可用于核查。
+盒内附件、店铺赠品与真实盘片分别记录，不为没有来源的包装内容虚构载体。
 
-编辑者可管理自己未发布的条目并提交 `pending_review`；管理员审核后设为 `published`。公开实体不能引用未公开的核心实体。
+## 组成、版本组和署名
 
-合并需要 `catalog.lifecycle.manage`、同固定种类、相容所属关系和已发布目标；后台先展示双方名称、标识、层级、版本与方向，确认后提交。引用迁移与受影响修订在同一事务提交。冲突的收录或关系必须先处理。停用保留墓碑，外围数据不级联删除。
+- **表达组成**：整体与部分 Expression 属于同一 Work，通过定义中用途为 `expression_composition` 的关系连接；常见种子码为 `expression_part`。
+- **显式版本组**：Release 通过用途为 `release_group` 的关系归到一个 Work 或 Collection；常见种子码为 `edition_of`。共同收录某首歌不等于属于同一版本组。
+- **创作与参与关系**：从适用的作品、篇目、表达或发行连接到主体。关系方向、允许层级和上下文字段均按当前定义选择。
 
-### 收藏
+同一演员在同一作品里担任不同角色时，用多条具有不同角色上下文的关系表达，不重复建演员。
 
-收藏是用户行为，归互动服务：表 `community.favorites`，由 `metafusion-community` 提供，目录库没有收藏表。
+## 填写与查看
 
-- `POST /api/favorites/toggle`：切换收藏。需登录但不限管理员，请求体 `{target_type, target_id}`；非法类型报 `invalid_target_type`，目标不存在或不可见报 `not_found`，返回 `favorited`。
-- `GET /api/favorites/status?target_type=&target_ids=a,b`：批量查询，匿名返回空集。
-- `GET /api/favorites/mine`：当前用户收藏，需登录但不限管理员。
-- `GET /api/users/:id/favorites`：指定用户收藏，公开读，但目标实体按请求方可见性过滤。
+所有条目的详情地址都是 `/catalog/<id>`。从详情进入编辑，先核对名称与归属，再填属性、图片、关系、修改说明和来源。
 
-后两个接口支持 `target_type`、`page`、`page_size`，默认 `page=1`、`page_size=20`，越界值取默认而不截断，窗口上限 100。
+归属通常不能直接改变。发现层级或归属错误时，先查阅现有引用并请有权限的成员处理，避免产生新的重复条目。
 
-`target_type` 直接是实体 kind（固定八实体骨架 `agent/collection/work/content_unit/expression/release/medium/track`），不做词表映射，并复用实体可见性规则。
+## 继续阅读
 
-### 首页偏好
-
-登录用户可读写 `GET /api/catalog/me/home-preferences`（匿名返回 401）与 `PUT /api/catalog/me/home-preferences`，请求体 `{order, hidden, sections}`。
-
-`order` / `hidden` 只是这个用户看到的顺序与显隐，里面的未知 slug **原样保留、合并时忽略**。不再报 `unknown_shelf`：管理员删掉货架后，用户不该连保存都失败。
-
-`sections` 是「覆盖系统货架 + 自建分区」的混合列表，最多 20 条：
-
-- `slug` 命中系统货架就覆盖那一条给本人看的 `names` / `query` / `sort` / `icon`（系统默认对其他用户不变）；不命中就是新增一个只属于本人的分区。
-- 每条至少要有非空的 `zh-CN` 名称，其余语种缺省时前端按回退链显示。
-- 每条过与货架同一份规则校验：`slug` 形如 `^[a-z0-9][a-z0-9_-]{1,63}$`，`sort` 取 `updated` / `created` / `title`，空值等价 `updated`。违反分别报 `invalid_slug` / `invalid_name` / `invalid_sort`，超过 20 条报 `too_many_sections`。
-- 同 slug 只保留首次声明。
-
-`GET /api/catalog/shelves/feed` 按这份偏好合并求值，每条 `shelf` 带 `source`：`system`（系统货架，含被本人覆盖的那一份）与 `custom`（自建分区）。匿名与未设置偏好的用户只看到 `system`。
-
-### 用户与密码
-
-账号权限由权限组决定。`PUT /api/admin/users/:id/groups` 用 `{groups: [...]}` 替换成员权限组；密码长度为 12–72。
-
-改密 `PUT /api/auth/password`，请求体 `{old_password, new_password}`。
-
-### 来源与证据
-
-来源支持 `url`（必须 HTTP(S) URL）、`publication` 和 `self`，都需要具体 `citation`。
-
-每次写入均要求 `edit_note` 和非空 `sources`，不再使用 v1 的 `source_urls` 字段。
-
-## 能力清单（部署态）
-
-`GET /api/capabilities` 返回 `{modules:[{id,enabled}]}`：这是**部署态声明**，不是健康探测结果——
-目录服务不探测上游、不发任何出站请求，`enabled` 只取决于是否配置了对应上游地址，`exchange` 由目录自身提供、恒为真。
-清单里没有 `healthy` / `version` / `dependencies`：上游当时的可用性由网关与运维面各自读各服务的
-`GET /health`、`GET /ready` 判断，不由目录代答。
-
-运行时模块开关已随子系统拆分退役：**不再有 `PUT /api/admin/modules/:id`**（请求该路径就是普通 404）。
-要开某项能力就部署对应服务，而不是在后台切换。
-
-| 能力 | 由谁提供 | 说明 |
-| --- | --- | --- |
-| storage | `metafusion-storage` | 文件与绑定、内容寻址直传、下载与访问控制；**不做转码与预览流**（明确取舍） |
-| community / records | `metafusion-community` | 论坛、短评、收藏与互动记录；帖子与收藏不属于元数据事实 |
-| exchange | 元数据目录自身 | `GET /api/exchange/entities/{id}` 导出快照；`POST /api/exchange/proposals` 提交编辑提案（一律落 `pending_review`） |
-
-清单里只有上面的 id。账号与令牌由 `metafusion-auth` 承担，但不作为能力项下发——目录侧只验签，不保存账号数据。
-
-需要判断"这个实体是否存在、当前能不能看到"时，统一调用 `GET /api/catalog/entities/{id}`；仅 404 表示不存在或不可见。401/403 是凭据或权限问题，429 应按 Retry-After 退避，5xx 是服务故障。合并后的跨服务聚合用 `GET /api/catalog/entities/{id}/identity` 取 canonical_id 与完整 aliases；只需要存活实体可用 `/resolve`。
-
-Bangumi 导入器（`POST /api/importer/preview`、`POST /api/importer/import`）是目录自身的核心路由，不受能力清单影响。其抓取条目、发行链、演职员/角色/声优关系的能力与不导入项见 [新建与编辑](/api-edit) 的「外部导入器能力」。
-
-独立 importer CLI 的来源映射与 AI 增强仍属未完成能力；OpenSearch 已是可选候选索引，由 PostgreSQL 做最终过滤和可见性回读。增加目录字段不会自动获得执行能力。
-
-::: tip 站内通知
-站内通知已实现，端点在目录服务上，见 [统一 API 概览](/api-overview)。
-:::
-
-## 不做的事
-
-- **不做转码**：不生成 HLS 切片、预览音频、波形图或缩略图；资源上传与下载见 [资源上传与下载](/upload-download)。
-- **不做未接入能力的承诺**：AI 增强与外部导入器扩展仍在规划中，接口文档里没写的端点就是还没有。
-
-自建实例的部署、迁移与验收步骤属于开发文档，不在本手册范围内；面向开发者的代码仓与协作文档见 [MetaFusion](https://github.com/MoeclubM/MetaFusion)。
+- [实体模型与字段](/frbr-model)：结构字段、归属与关系的精确说明。
+- [标签、货架与多语言体系](/taxonomy)：描述性分类和展示规则。
+- [权威编目与审查准则](/curation-guide)：建模与审核清单。
+- [实体查询与详情](/api-entities)：用 API 读取目录和关系。
+- [动态定义与配置](/api-definitions)：维护字段、关系和展示方案。

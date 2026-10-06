@@ -1,270 +1,112 @@
 ---
 title: "API 概览"
-description: "统一 /api 主干：实体查询、详情、写入、定义与导入接口。"
+description: "开发者与 Agent 的接入顺序、能力索引、可见性、限流和错误处理。"
 order: 10
 group: "api"
 ---
 
 # API 概览
 
-MetaFusion 的对外接口是一条统一的 `/api` 主干：实体查询、检索、写入、定义管理与外部导入都在同一套端点里。
+MetaFusion 使用统一的 `/api` 入口。实体种类通过 `kind` 区分，所有实体共用查询、详情和写入端点。
 
-它**不是** MusicBrainz WS/2 风格的 Lookup / Browse / Search API——没有 `/api/ws/2/*` 兼容层，也没有独立的 `/api/search`、`/api/browse/*`。实体查询与检索统一走 `GET /api/catalog/entities`。
+## 接入顺序
 
-## 基础信息
+1. 确认目标实例的根地址，读取 `GET /api/openapi.json`。
+2. 读取 `GET /api/catalog/definitions`，获取字段、词项、结构和关系规则。
+3. 查询实体并解析合并身份，按需要读取目录、收录或关系。
+4. 需要写入时配置凭据、检查权限，提交说明、来源和当前版本。
+5. 按分页标记继续查询；按 HTTP 状态和机器错误码处理失败。
 
-### Base URL
+公开数据可匿名查询。完整接口形状以目标实例为准，本文示例不代表某实例已有对应数据。
 
-`/api`，单一入口。网关按路径分流到目录、账号、互动、存储四个服务；未单列的前缀兜底给目录服务 `backend:8080`。
+## 契约与凭据
 
-### OpenAPI 规范
+| 入口 | 用途 |
+| --- | --- |
+| `GET /api/openapi.json` | 目录服务的 OpenAPI 3.0.3，公开读取 |
+| `GET /api/catalog/definitions` | 当前定义、固定 kind 名与 `relationship_rules` |
+| `GET /api/version` | 目录服务版本 |
+| `GET /api/capabilities` | 已配置的外围能力声明，不能代替健康检查 |
 
-[GET /api/openapi.json](/api/openapi.json)（OpenAPI 3.0.3）。它只覆盖**目录服务**的 paths 与 schemas；账号、互动、存储各自实现自己的前缀，目前没有机器可读的 OpenAPI。
+本站目录规范：[OpenAPI JSON](https://findverse.cc/api/openapi.json)。账号、社区和存储协议分别见对应 API 页面，目录 OpenAPI 不覆盖其全部端点。
 
-这是接入方该看的那一份：它公开、无需登录（与 `GET /api/version` 同列公开面）——把端点表藏起来只是隐蔽性、不是访问控制。
+请求使用 JSON。目录服务拒绝未知字段，请求体上限 2 MiB。响应通常为 JSON，错误形状为 `{"error":"<code>"}`；网关拦下的响应可能使用其他格式。
 
-### 交互式文档
+认证支持 `Authorization: Bearer <token>` 和会话 Cookie `mf_session`。会话、OAuth 和 PAT 的选择及有效权限见[认证与凭证](/api-auth)。目录权限只按令牌中的 `permissions` 判定。
 
-[Scalar (/api/docs)](/api/docs)、[Swagger UI (/api/swagger)](/api/swagger)。
+交互文档 `/api/docs` 与 `/api/swagger` 需要登录及 `catalog.lifecycle.manage`，第三方接入直接使用公开 OpenAPI。
 
-::: warning 管理面：需登录 + `catalog.lifecycle.manage`
-这两页在本域里执行脚本，匿名可达等于把整份 API 面连同同源脚本执行面一起交出去，因此需要先登录、且账号要持 `catalog.lifecycle.manage`（未登录 `401 authentication_required`，登录但无码 `403 forbidden`）；页面与它自托管的脚本、样式（`/api/docs/assets/*`）走同一道闸门。
+## 能力索引
 
-接入方要读契约请用上面的 `/api/openapi.json`，不要假设这两页对外可达。
-:::
+| 要完成的任务 | 端点 | 详细契约 |
+| --- | --- | --- |
+| 查找与筛选实体 | `GET /api/catalog/entities` | [实体查询与详情](/api-entities)、[检索](/api-search) |
+| 获取可编辑完整实体 | `GET /api/catalog/entities/:id` | [实体查询与详情](/api-entities) |
+| 跟随合并与批量解析身份 | `GET .../:id/identity`、`POST /api/catalog/entities/identity` | [实体查询与详情](/api-entities) |
+| 遍历可见的直接关系与属性引用 | `GET .../:id/links`、`POST /api/catalog/relationships/query` | [实体查询与详情](/api-entities) |
+| 读取语义关系与实际收录 | `GET .../:id/relations`、`.../:id/occurrences` | [实体查询与详情](/api-entities) |
+| 读取发行目录、表达组成与版本组 | `GET /api/catalog/releases/:id/toc`、`.../:id/editions`、`GET /api/catalog/expressions/:id/composition` | [实体查询与详情](/api-entities) |
+| 批量表达与对比 | `POST /api/catalog/expressions/details`、`GET /api/catalog/compare` | [实体查询与详情](/api-entities) |
+| 新建、编辑、关系与单条收录 | `/api/catalog/entities`、`/relations`、`/tracks/:id/contents` | [新建与编辑](/api-edit) |
+| 合并、停用与下架 | `POST .../:id/lifecycle`、`.../:id/unpublish` | [新建与编辑](/api-edit) |
+| 外部导入与实例交换 | `/api/importer/*`、`/api/exchange/*` | [新建与编辑](/api-edit) |
+| 定义、货架与外部库配置 | `/api/admin/catalog-definitions`、`/shelves`、`/external-databases` | [动态定义与配置](/api-definitions) |
+| 收藏、讨论、私信与举报 | `/api/community/*`、`/api/favorites/*`、`/api/messages/*` | [社区与互动 API](/api-community) |
+| 上传、绑定和读取文件 | `/api/storage/*` | [存储上传与下载](/api-storage) |
+| 第三方授权登录 | `/api/oauth/*`、`/api/oidc/*` | [第三方站点接入 OAuth 授权](/oauth-integration) |
+| Agent 技能与工具接入 | 复用上述 API | [AI Agent 协作指南](/agent-integration)、[AI Agent API 与工具规范](/api-agent) |
 
-### 认证
+用户主页资料、互动统计和目录贡献分别使用 `/api/users/:id`、`.../:id/stats`、`.../:id/contributions`。分别见认证、社区和实体查询页面。
 
-会话 Cookie `mf_session`，或 `Authorization: Bearer <token>`。会话 / OAuth 令牌由账号服务签发（RS256），目录服务只验签、不查库、不签发。
+## 状态与可见性
 
-另有**个人访问令牌（PAT，`mfp_` 前缀）**供外部应用 / Agent / CI 长期接入——目录侧把它交给账号服务内省判定，见 [认证与凭证](/api-auth)。
+| 状态 | 详情可见性 |
+| --- | --- |
+| `published` | 所有人 |
+| `draft` / `pending_review` | 创建者和具有生命周期管理权限的人 |
+| `deleted` / `merged` | 创建者和具有生命周期管理权限的人可直读；合并身份使用 `identity` 或 `resolve` |
 
-### 请求体与响应
+普通列表排除 deleted / merged。关系、收录和历史响应还会过滤不可见端点与引用；公开响应不能当作全库备份。
 
-- 请求体是 JSON；未知字段一律拒绝（`400 invalid_payload`），体积上限 2 MiB
-- 响应是统一 JSON；错误统一为 `{ "error": "<机器码>" }`
+写入需要登录。没有 `catalog.entity.edit` 时，只能维护自己的未发布条目并保存为 draft / pending_review。关系、生命周期和定义管理各有权限码，见[新建与编辑](/api-edit)。
 
-### 限流（速览）
+## 分页与查询完整性
 
-目录服务只对少数重型读接口限流（见下文），超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After` 秒数。
+实体列表 limit 默认 50、范围 1–100，offset 默认 0；非法值返回 400。page 为从 1 起的便捷写法，与 offset 互斥。无关键词浏览的 `total` 来自数据库计数；关键词查询的计数与深分页按[检索](/api-search)契约处理。
 
-这些路由的**每个响应**都带 `X-RateLimit-Limit`（窗口上限）、`X-RateLimit-Remaining`（窗口内剩余次数，用尽为 0）、`X-RateLimit-Reset`（距窗口重置的秒数）；超限的 `429` 同样带这三件套。
+统一关系查询逐主体分页。只有完成所有页、没有不可用主体并处理定义变化后，才能声明对应可见范围的直接关系已读完。递归图谱需要调用方维护待查队列与已访问集合。
 
-网关对全部 `/api/` 前缀另有按 IP 的速率限制，那一层的 `429` 由 nginx 直接返回，**不带 `Retry-After`、也不带这组头**；账号 / 互动 / 存储三个服务自身的限流同样不发 `X-RateLimit-*`。
-
-### 网关分流
-
-`/api` 是统一入口，但不同路径归不同服务。`/api/users/*` 是**同一前缀、多个归属**，按精确路径分流：
-
-| 路径 | 归属服务 |
-|---|---|
-| `GET /api/users/:id` | 账号服务（公开资料） |
-| `GET /api/users/:id/stats` | 互动服务（互动统计） |
-| `GET /api/users/:id/favorites` | 互动服务（收藏列表） |
-| `GET /api/users/:id/contributions` | 目录服务（贡献流） |
-| `/api/messages/*` | 互动服务（私信，需登录） |
-| `/api/community/*`、`/api/favorites/*`、`/api/records/*` | 互动服务 |
-| `/api/storage/*` | 存储服务 |
-| `/api/auth/*`、`/api/setup`、`/api/oauth/*`、`/api/oidc/*`、`/api/developer/*`、`/api/admin/{users,groups,permissions,settings,invites,oauth}`、`/.well-known/*` 与 `/api/.well-known/*` | 账号服务 |
-| 其余 `/api/*`（含 `/api/catalog/*` 与目录侧 `/api/admin/{catalog-definitions,shelves,external-databases}`） | 目录服务（兜底） |
-
-归属以主仓库 `deploy/nginx.conf` 的生效矩阵为准。
-
-### 管理台（页面路径）
-
-四个管理台是**四个独立应用**，由网关在同一域下按路径聚合；它们的数据请求仍旧走 `/api/*`，由上面的矩阵分流回对应服务：
-
-| 控制台 | 页面路径 | 归属 |
-|---|---|---|
-| 目录（元数据：实体 / 定义 / 货架 / 外部库 / 导入审核） | `/admin` | 主前端 `frontend/`（主仓库，见 [元数据目录](/catalog)） |
-| 账号（用户、权限组、邀请码、实例设置、OAuth 客户端） | `/admin/account/` | `metafusion-auth/admin/`（独立构建与发布） |
-| 社区（板块、主题、帖子治理） | `/admin/community/` | `metafusion-community/admin/` |
-| 存储（用量总览、资产查询、绑定解绑） | `/admin/storage/` | `metafusion-storage/admin/` |
-
-三条两段前缀与主站的 `location /`（含目录控制台 `/admin`）互不重叠：nginx 前缀更长者胜，所以主站的 `/admin` 不受影响。
-
-不带尾斜杠的裸路径由 `location =` 精确匹配 301 补齐（`/admin/account` → `/admin/account/`）；否则会被最宽的 `location /` 兜给主前端、表现为 404。
-
-管理台自身的访问控制由应用鉴权 + 数据接口上的权限码共同决定（例如账号管理台调 `/api/admin/users` 仍要 `auth.users.manage`）。
-
-实例设置在管理台里只能读：账号管理台的「实例与设置」（`/admin/account/instance`，需 `auth.settings.manage`）只渲染 `GET /api/admin/settings` 返回的键值，没有写入控件。
-
-`PUT /api/admin/settings` 存在且生效，但**没有界面入口**——改注册开关 / 邀请策略 / 限流阈值这类设置需要直接调该端点（权限码相同）。
-
-::: warning 管理台页面路径不套 `/api/` 的限流口径
-它们是页面路径、不是 `/api/` 路径：网关只对 `/api/` 下的 location 挂 `limit_req`，因此这四个管理台（与 `/docs` 同类）不套 `/api/` 的限流口径——不是漏配，别按 `/api/` 的 30 r/s 去估算或补一条限流。
-:::
-
-## 能力分组
-
-| 能力 | 真实端点 | 认证 |
-|---|---|---|
-| 动态定义 | `GET /api/catalog/definitions` | 开放 |
-| 实体查询 | `GET /api/catalog/entities`（`q` / `kind` / `kinds` / `status` / 关联 id / `field` + `value` / `tags` / `limit` / `offset`） | 开放 |
-| 实体详情 | `GET /api/catalog/entities/:id`、`/resolve`、`/relations`、`/occurrences`、`/revisions` | 开放 |
-| 身份与统一关系读取 | `GET /api/catalog/entities/:id/identity`、`/links`；`POST /api/catalog/entities/identity` 只读批量身份解析 | 按实体可见性过滤；见 [实体查询与详情](/api-entities) |
-| 批量表达详情 | `POST /api/catalog/expressions/details`（发行页一次取多条表达与收录） | 开放 |
-| 表达组合与发行目录/版本 | `GET /api/catalog/expressions/:id/composition`、`GET /api/catalog/releases/:id/toc`、`/editions` | 按实体可见性过滤；用途与示例见 [元数据目录](/catalog) |
-| 写入 | `POST /api/catalog/entities`、`PUT /api/catalog/entities/:id` | 需登录；权限见下文 |
-| 单条收录编辑 | `POST /api/catalog/tracks/:id/contents`、`PUT\|DELETE /api/catalog/tracks/:id/contents/:position` | 需登录；沿用 Track 实体编辑权限和版本，见 [新建与编辑](/api-edit) |
-| 关系写入 | `POST /api/catalog/relations`、`PUT\|DELETE /api/catalog/relations/:id` | `catalog.relation.edit` |
-| 生命周期 | `POST /api/catalog/entities/:id/lifecycle`（合并 / 退役）、`POST /api/catalog/entities/:id/unpublish`（下架：`published → draft`） | `catalog.lifecycle.manage` |
-| 实体与发行对比 | `GET /api/catalog/compare?ids=a,b`（2–6 个实体，Release/Medium 附内容树） | 开放 |
-| 标签聚合 | `GET /api/catalog/tags`（按已发布实体的 `attributes.tags` 统计频次） | 开放 |
-| 货架 | `GET /api/catalog/shelves`、`GET /api/catalog/shelves/feed` | 开放 |
-| 外部权威库 | `GET /api/catalog/external-databases` | 开放 |
-| 首页偏好 | `GET\|PUT /api/catalog/me/home-preferences` | 需登录 |
-| 站内通知 | `GET /api/notifications`、`GET /api/notifications/unread-count`、`POST /api/notifications/:id/read`、`POST /api/notifications/read-all` | 需登录；见下文 |
-| 动态定义管理 | `GET\|PUT /api/admin/catalog-definitions`、`POST /api/admin/catalog-definitions/impact` | `catalog.definitions.manage` |
-| 货架规则管理 | `/api/admin/shelves`（含 `/{id}` 读写删） | `catalog.shelves.manage` |
-| 外部库管理 | `/api/admin/external-databases`（含 `/{code}` 读写删） | `catalog.definitions.manage` |
-| 实例间交换 | `GET /api/exchange/entities/:id`、`POST /api/exchange/proposals` | 提案需登录 |
-| 外部导入 | `GET /api/importer/sources`（只读来源清单）、`POST /api/importer/preview`、`POST /api/importer/import` | `catalog.import.submit` |
-| 交互式文档 | `GET /api/docs`（Scalar）、`GET /api/swagger`（Swagger UI） | 需登录 + `catalog.lifecycle.manage`（管理面，不是公开入口） |
-| 账号与 OAuth | `/api/setup`、`/api/auth/*`、`/api/oauth/*`、`/api/developer/*`（开发者中心） | 见 [认证与凭证](/api-auth) |
-| 用户主页 | `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` | 开放；见下文 |
-| 收藏与社区 | `/api/favorites/*`、`/api/users/:id/favorites`、`/api/community/*`、`/api/records/*`（后者需登录） | 见下文 |
-| 私信 | 见下文 | 需登录 |
-| 举报与申诉 | 见下文 | 见下文 |
-| 资源文件 | `/api/storage/*` | 见 [存储上传与下载](/api-storage) |
-
-### 写入权限
-
-写入需登录；`catalog.entity.edit` 决定能否协作维护他人/公开条目与直接发布，无此码者只能存 `draft` / `pending_review`。
-
-### 站内通知
-
-- 收件箱 `GET /api/notifications`（`items` / `total` / `unread`）、未读数 `GET /api/notifications/unread-count`、标记已读 `POST /api/notifications/:id/read` 与 `POST /api/notifications/read-all`。
-- 通知**只对自己可见**：没有 recipient 参数，收件人就是令牌身份。对别人的通知标记已读与对不存在的 id 一样回 `404 not_found`。
-- 事件类型 `comment.replied` / `entity.included` / `entity.review_approved` / `entity.review_rejected` / `import.completed`。
-- 同一聚合键的多条事件合并成一行（`count` 记录合并条数）；有新活动时该行重新变为未读。
-
-### 用户主页
-
-开放读取；`email` 字段仅本人可见。资料 / 统计 / 贡献分别见 [认证与凭证](/api-auth)、[社区使用指南](/community-guide)、[实体查询与详情](/api-entities)。
-
-### 收藏与社区
-
-读开放；写除登录外还要权限码（`member` 组默认持有发帖码）：
-
-| 操作 | 权限码 |
-|---|---|
-| 发帖与回帖 | `community.post.create` |
-| 置顶 | `community.topic.pin` |
-| 板块配置 | `community.board.manage` |
-| 帖子巡检 | `community.post.moderate` |
-
-### 私信
-
-- `GET /api/messages/with/:id` 读会话、`POST /api/messages/with/:id` 发信
-- `PUT /api/messages/with/:id/read` 标记已读
-- `GET /api/messages/conversations` 收件箱会话列表、`GET /api/messages/unread` 未读总数
-- 需登录；口径与限频见 [社区使用指南](/community-guide)
-
-### 举报与申诉
-
-- 提交 `POST /api/community/reports`、我的举报 `GET /api/community/reports/mine`、申诉 `POST /api/community/reports/:id/appeal`。提交与申诉需登录（无权限码）。
-- 管理端举报队列 `GET /api/community/admin/reports`（含 `/:id` 详情与 accept / reject / resolve）、申诉队列 `GET /api/community/admin/appeals`（含 `/:id/review`），需 `community.report.review`。
-- 口径与状态机见 [社区使用指南](/community-guide) 的「举报与申诉」。
-
-## 访问模型
-
-- **元数据开放**：`/api/catalog/*` 的读接口无需鉴权，可被搜索引擎收录
-- **写入受控**：实体写入只需登录。无 `catalog.entity.edit` 时提交的状态被收敛为 `draft` / `pending_review`（见 [新建与编辑](/api-edit)）；合并 / 退役 / 下架另需 `catalog.lifecycle.manage`
-- **未发布内容不公开**：`draft` / `pending_review` 只有创建者（与持生命周期权限者）能读；`deleted` / `merged` 只有创建者能直读
-
-## 分页与排序
-
-- 分页参数是 `limit` / `offset`：**`limit` 默认 50、上限 100，越界时静默按 50 处理**（不报错）
-- 列表响应为 `{ "items": [...], "total": <真实 COUNT> }`
-- 默认排序 `updated_at DESC, id`；按关联 id 查询结构子项（`release_id` / `medium_id` / `content_unit_id` / `parent_id`）时按 `position` 升序
-- 关联数据用 `/relations`、`/occurrences` 或关联 id 过滤取得；分页参数只有 `limit` / `offset` 两个
+关系摘要只能用于展示和继续查询；编辑前重新获取完整实体及当前 version。
 
 ## 限流
 
-目录服务的路由级限流按 IP + 路由、进程内存固定窗口计数：
+目录重型读接口默认按「账号 + 路由」计数，匿名按「客户端 IP + 路由」计数。额度优先级为账号、用户组、全局配置、路由内置值；多组命中取最宽松规则。
 
-| 路由 | 上限 |
-|---|---|
-| `GET /api/catalog/entities` | 120 / 分钟 |
-| `GET /api/catalog/entities/stats` | 120 / 分钟（另需 `catalog.lifecycle.manage`） |
-| `GET /api/catalog/tags` | 120 / 分钟 |
-| `POST /api/catalog/expressions/details` | 120 / 分钟 |
-| `GET /api/catalog/shelves/feed` | 60 / 分钟 |
-| `GET /api/users/:id/contributions` | 120 / 分钟 |
-| `GET /api/catalog/compare` | 10 / 分钟 |
-| `POST /api/importer/preview` | 10 / 分钟 |
-| `GET /api/notifications/unread-count` | 300 / 分钟 |
+| 路由 | 内置默认额度 / 分钟 |
+| --- | --- |
+| 实体列表、标签、实体统计、links、批量 identity、批量表达、toc、editions、composition、贡献流、请求日志 | 120 |
+| `POST /api/catalog/relationships/query`、`GET /api/catalog/shelves/feed` | 60 |
+| `GET /api/catalog/compare`、`POST /api/importer/preview` | 10 |
+| `GET /api/notifications/unread-count` | 300 |
 
-`GET /api/notifications/unread-count` 是角标端点，比其它读接口宽：一个 NAT 后可能同时开着几十个标签页。
+受限路由响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（距重置的秒数）；超限为 429，并带 `Retry-After`。实例策略可覆盖默认额度，配置为不限时不发这组窗口头。管理协议见[动态定义与配置](/api-definitions)。
 
-写接口（实体、关系、生命周期）没有路由级限流，但仍受网关按 IP 的 `30 r/s`（burst 50）约束。
+网关另按 IP 限流；被网关拦下的 429 不带上述窗口头。计数当前在各目录进程内独立，客户端应以实际响应判断额度，并在缺少 Retry-After 时采用退避。
 
-`GET /api/importer/sources` 只读注册表、不出站抓取，也不额外限流（与 `preview` 的 10 / 分钟无关）。
+## 常见错误处理
 
-`/api/auth/` 与 `/api/setup` 另按 `5 r/s` 限流；`/api/storage/` 同样受 `30 r/s` 约束，只是因为分片上传天然是多请求而把 burst 放大到 100。
+| HTTP / error | 调用方处理 |
+| --- | --- |
+| 400 `invalid_payload` | 核对字段、参数与当前 schema，避免重放同一错误载荷 |
+| 400 `invalid_limit` / `invalid_offset` / `invalid_page` / `pagination_conflict` | 修正分页值，避免组合互斥参数 |
+| 400 `invalid_reference` | 核对 kind、归属、可见性与合并身份 |
+| 400 `evidence_required` / `invalid_source` | 补充修改说明与可核验来源 |
+| 401 `authentication_required` / `invalid_token` | 获取有效凭据；PAT 不会因失效退为匿名 |
+| 403 `forbidden` | 核对账号权限、令牌 scopes 与条目可写范围 |
+| 404 `not_found` | 不存在或不可见，不能进一步区分 |
+| 409 `version_conflict` | 回读并合并修改，再用最新版本或 ETag 提交 |
+| 409 `idempotency_conflict` | 同一幂等键对应了不同载荷；核对任务身份，勿盲目换键重复创建 |
+| 429 `rate_limited` | 按 Retry-After 等待，减少并发与重复请求 |
+| 5xx | 视为服务或依赖故障；不能当作实体缺失或零命中 |
 
-上表每一行的**所有响应**（含 200 与超限的 `429`）都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`：`Limit` 是该路由的分钟上限、`Remaining` 是当前窗口还剩几次、`Reset` 是距窗口重置的秒数（据此能算出下一次可用的时刻）；表外路由不发这组头。
-
-目录服务的路由级限流超限返回 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。网关自身的限流由 nginx 直接返回 `429`（`limit_req_status 429`），响应体不是目录服务的错误 JSON，也没有这组头。
-
-## 错误码
-
-写入与查询失败的机器码是稳定契约（HTTP 状态码 + `error` 字段）：
-
-| 状态码 | `error` | 含义 |
-|---|---|---|
-| 400 | `invalid_payload` | JSON 形状错误，或含未知字段（服务端拒绝未知字段） |
-| 400 | `invalid_id` | 目录侧路径上的 UUID 解析失败（如 `/api/catalog/entities/:id`、`/relations/:id`） |
-| 400 | `evidence_required` | 写入没带 `edit_note` 或 `sources` |
-| 400 | `invalid_source` | `sources` 项不合法：`kind` 只接受 `url` / `publication` / `self`，`citation` 不能为空，`url` 必须是合法链接 |
-| 400 | `invalid_reference` | 引用的实体不存在、kind 不符或对调用者不可见 |
-| 400 | `constraint_violation` | 违反库内约束（复合外键、唯一索引等） |
-| 400 | `immutable_scope` | 改动了不可变归属：`kind` / `work_id` / `release_id` / `medium_id` |
-| 400 | `use_lifecycle_endpoint` | 试图用实体写入把已发布条目降级，或直接设成 `deleted` / `merged` |
-| 400 | `translation_required` | 发布时一条 `translations` 都没有 |
-| 400 | `four_locale_names_required` | 定义文档 / 货架 / 外部权威库里的名称缺语种，`error` 形如 `four_locale_names_required: zh-TW,ja-JP`，冒号后是缺失的语种 |
-| 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段不存在 |
-| 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系写入的语义校验失败（见 [新建与编辑](/api-edit)） |
-| 400 | `invalid_merge_target` | 合并目标不是同 kind、同归属的已发布实体 |
-| 400 | `invalid_status` | 状态机不允许这个动作 |
-| 400 | `compare_requires_two_to_six` | 对比的 `ids` 少于 2 个或多于 6 个 |
-| 401 | `authentication_required` | 需要登录的端点未带有效令牌 |
-| 401 | `invalid_token` | 带 `mfp_` 前缀的 PAT 无效 / 已吊销 / 已过期 / 账号被封禁 |
-| 403 | `forbidden` | 已登录但缺对应权限码（或不是这条数据的可写者） |
-| 404 | `not_found` | 不存在，或对调用者不可见 |
-| 409 | `version_conflict` | `expected_version` 与当前版本不一致：重读实体后再写 |
-| 429 | `rate_limited` | 命中目录服务的路由级限流，读 `Retry-After` 退避 |
-| 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） |
-| 503 | `auth_unavailable` | PAT 请求问不到账号服务：内省端点不可达 / 超时 / 服务没配 `AUTH_URL`。这是依赖故障，**重试**而不是换令牌 |
-
-几个容易误读的码，补充语义：
-
-- **`invalid_id`**：用户主页三条路径 `/api/users/:id`、`/api/users/:id/stats`、`/api/users/:id/contributions` 的非 UUID 一律 `404 not_found`，不回这个码。
-- **`use_lifecycle_endpoint`**：停用与合并走生命周期端点；退回 `draft` 走下架端点 `POST /api/catalog/entities/:id/unpublish`。PUT 提交降级一律回这个码。
-- **`invalid_status`**：下架只接受 `published`（`draft` / `pending_review` 没有可下架的内容，`deleted` / `merged` 是终态）；生命周期端点对已 `deleted` / `merged` 的实体也回这个码。
-- **`compare_requires_two_to_six`**：`/compare` 只接 Release，非 Release 报 `invalid_kind`。
-- **`invalid_token`**：不细分原因（细分会变成枚举探测口），形态非法在本地直接拒绝。PAT 坏令牌在**读端点**也返回 401，与会话 / OAuth 令牌的「验签失败按匿名继续」不同。
-- **`forbidden`**：PAT 的有效权限 = 账号现时权限 ∩ 令牌 scopes，scopes 为空或不够时就是这里。
-- **`not_found`**：不区分「不存在」与「无权限」；用户主页三条路径上非 UUID 的 id 也归这里。
-- **`rate_limited`**：命中限流的路由每个响应都带 `X-RateLimit-Limit` / `Remaining` / `Reset`；网关自身的 429 无这些头，也不带此 JSON 体。
-
-## 实体状态与可见性
-
-| 状态 | 含义 | 可见性 |
-|---|---|---|
-| `draft` | 草稿（新建时的默认状态） | 创建者 + 持生命周期权限者 |
-| `pending_review` | 待审（外部提案落在这里） | 同上 |
-| `published` | 已发布，公开展示 | 所有人 |
-| `deleted` | 已停用 | 创建者可直读 |
-| `merged` | 已合并，`redirect_id` 指向保留实体 | 创建者可直读；用 `GET /api/catalog/entities/:id/resolve` 取到保留实体 |
-
-列表接口的可见性口径：匿名只看 `published`；登录用户看 `published` 加自己创建的全部条目；持 `catalog.lifecycle.manage` 看全量（`deleted` / `merged` 除外）。
-
-降级只有一条通道：`published → draft` 走 `POST /api/catalog/entities/:id/unpublish`（需 `catalog.lifecycle.manage`，同一套证据与乐观锁，同一事务写修订行与 `entity.unpublished` 事件）。`deleted` / `merged` 是终态，要恢复只能新建。
-
-## 下一步
-
-- [认证与凭证](/api-auth)：会话令牌、OAuth 2.0 / OIDC 与开发者中心
-- [实体查询与详情](/api-entities)：`/api/catalog/entities` 的过滤、详情与关联
-- [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
+写入与关系的具体语义错误见[新建与编辑](/api-edit)，Agent 的处理策略见[AI Agent API 与工具规范](/api-agent)。

@@ -10,7 +10,7 @@ group: "api"
 MetaFusion 账号服务对外提供 OAuth 2.0 授权码流程与 OIDC 子集（发现文档、`id_token`、JWKS）。
 第三方站点用它在自己的站点上实现「用 MetaFusion 账号登录」，不需要接触用户密码。
 
-本页按当前实例的实测契约写：端点、参数、响应字段与错误码可以直接照抄。
+本页描述 OAuth 授权码、PKCE、用户信息与客户端管理协议。接入时先读取目标实例的发现文档，核对端点与支持能力。
 把示例里的 `https://<your-host>` 换成你自己的实例地址即可。
 
 ::: tip 与本页的关系
@@ -441,7 +441,7 @@ with urllib.request.urlopen(userinfo_request) as response:
 
 账号管理台（`/admin/account/`，由 `metafusion-auth` 的 `admin/` 独立构建）有「OAuth 客户端」页签，覆盖上面全部管理动作。
 只有持 `auth.oauth.manage` 的账号能看到该页签，无权限时入口不显示（接口侧仍是 403，两层一致）。
-主站的 `/admin` 只管理元数据目录，OAuth 客户端治理不在那里（见 [平台概览](/overview) 的「管理台按域拆分」）。
+OAuth 客户端治理位于账号管理台 `/admin/account/`，与目录管理台 `/admin` 分别授权。
 
 | 想做的事 | 界面位置 |
 | --- | --- |

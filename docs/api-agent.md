@@ -13,7 +13,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 主干没有一站式原子提交端点，也没有按 kind 拆分的 REST 端点。一条发行链要按层级逐次提交，后一次失败不会回滚前面已成功的实体。
 :::
 
-接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录](/catalog)；逐步操作流程见 [AI Agent 协作指南](/agent-integration)。
+接入前先读：[API 概览](/api-overview)、[认证与凭证](/api-auth)、[新建与编辑](/api-edit)、[元数据目录教程](/catalog)；逐步操作流程见 [AI Agent 协作指南](/agent-integration)。
 
 ## 1. 运行时事实来源
 
@@ -29,125 +29,30 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 ## 2. 工具声明
 
-可直接拉取 `GET /api/openapi.json` 生成工具集，或注入以下声明（字段名与路径与实现一致）：
+根据目标实例 OpenAPI 构造工具，HTTP method、path 和参数分别映射。读、创建、替换和删除分别声明工具，避免把多种方法或中文说明拼进同一个 path。
 
-```json
-{
-  "tools": [
-    {
-      "name": "metafusion_search_entities",
-      "description": "按题名或翻译文本的子串检索实体，用于查重与关系对端选择。返回 {items, total}；total 是真实计数。",
-      "method": "GET",
-      "path": "/api/catalog/entities",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "q": { "type": "string", "description": "题名或 translations 整段文本的子串匹配（ILIKE）" },
-          "kind": { "type": "string", "enum": ["agent", "collection", "work", "content_unit", "expression", "release", "medium", "track"] },
-          "kinds": { "type": "array", "items": { "type": "string" }, "description": "多 kind，命中任一即返回；逗号分隔或重复出现等价" },
-          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50, "description": "默认 50、上限 100；越界静默按 50 处理，不报错" },
-          "offset": { "type": "integer", "minimum": 0, "default": 0 }
-        }
-      }
-    },
-    {
-      "name": "metafusion_get_entity",
-      "description": "读取实体详情。PUT 之前必须先调用它拿全量字段与当前 version。不可见或不存在都返回 404。",
-      "method": "GET",
-      "path": "/api/catalog/entities/{id}",
-      "parameters": {
-        "type": "object",
-        "properties": { "id": { "type": "string", "format": "uuid" } },
-        "required": ["id"]
-      }
-    },
-    {
-      "name": "metafusion_query_relationships",
-      "description": "只读批量查询直接结构、收录和语义关系。按方向、运行时规则码和对端kind筛选后分页；返回pages、entities摘要、unavailable_ids和definition_etag。不自动遍历全图。",
-      "method": "POST",
-      "path": "/api/catalog/relationships/query",
-      "parameters": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "ids": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "string", "format": "uuid" } },
-          "direction": { "type": "string", "enum": ["both", "outgoing", "incoming"], "default": "both" },
-          "rule_codes": { "type": "array", "items": { "type": "string" }, "description": "definitions.relationship_rules中的完整code" },
-          "peer_kinds": { "type": "array", "items": { "type": "string", "enum": ["agent", "collection", "work", "content_unit", "expression", "release", "medium", "track"] } },
-          "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
-          "offset": { "type": "integer", "minimum": 0, "maximum": 10000, "default": 0 }
-        },
-        "required": ["ids"]
-      }
-    },
-    {
-      "name": "metafusion_save_entity",
-      "description": "创建或整实体替换一个实体。创建用 POST（entity.id 留空、expected_version 为 0），更新用 PUT 并带上刚读到的 version。没有跨层级的原子提交端点，发行链按层级多次调用。",
-      "method": "POST | PUT",
-      "path": "/api/catalog/entities（创建）；更新用 /api/catalog/entities/{id}",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "entity": {
-            "type": "object",
-            "description": "实体本体；kind 与 title 必填，结构归属字段按 kind 填写（content_unit/expression 用 work_id，medium 用 release_id，track 用 medium_id，release 用 subjects）",
-            "required": ["kind", "title"]
-          },
-          "expected_version": { "type": "integer", "description": "创建必须为 0；更新必须等于当前 version，不一致返回 409" },
-          "edit_note": { "type": "string", "description": "本次修改的具体说明，非空" },
-          "sources": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "object",
-              "properties": {
-                "kind": { "type": "string", "enum": ["url", "publication", "self"] },
-                "citation": { "type": "string" },
-                "url": { "type": "string", "description": "kind=url 时必填，必须是合法 HTTP(S) 链接" }
-              },
-              "required": ["kind", "citation"]
-            }
-          }
-        },
-        "required": ["entity", "edit_note", "sources"]
-      }
-    },
-    {
-      "name": "metafusion_save_relation",
-      "description": "创建或替换一条实体关系。关系码与两端 kind 必须来自 definitions 中 enabled 的定义。",
-      "method": "POST | PUT",
-      "path": "/api/catalog/relations（创建）；更新用 /api/catalog/relations/{id}",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "relation": {
-            "type": "object",
-            "properties": {
-              "type": { "type": "string", "description": "关系码，如 includes / adaptation_of / directed_by / character_in" },
-              "source_id": { "type": "string", "format": "uuid" },
-              "target_id": { "type": "string", "format": "uuid" },
-              "position": { "type": "integer", "minimum": 0, "default": 0 },
-              "attributes": { "type": "object", "description": "可用键见该关系定义的 fields：role / credit_role / character_rank / context / character / language / begin_date / end_date / scope" }
-            },
-            "required": ["type", "source_id", "target_id"]
-          },
-          "expected_version": { "type": "integer" },
-          "edit_note": { "type": "string" },
-          "sources": { "type": "array", "minItems": 1 }
-        },
-        "required": ["relation", "edit_note", "sources"]
-      }
-    },
-    {
-      "name": "metafusion_get_definitions",
-      "description": "读取发布态定义文档与八类 kind 的多语言名。字段码、词表项与关系码的唯一来源。",
-      "method": "GET",
-      "path": "/api/catalog/definitions",
-      "parameters": { "type": "object", "properties": {} }
-    }
-  ]
-}
-```
+| 建议工具 | HTTP 入口 | 关键输入与输出 |
+| --- | --- | --- |
+| find_entities | `GET /api/catalog/entities` | q、筛选、limit 与分页；返回实体及计数口径 |
+| get_entity | `GET /api/catalog/entities/{id}` | 完整实体与 version，编辑前使用 |
+| resolve_identity | `GET /api/catalog/entities/{id}/identity` | canonical_id、aliases、entity、complete |
+| query_relationships | `POST /api/catalog/relationships/query` | ids、方向、规则、对端筛选与逐主体分页 |
+| get_definitions | `GET /api/catalog/definitions` | 当前 ETag、字段、词项与关系注册表 |
+| create_entity / replace_entity | `POST /api/catalog/entities` / `PUT .../{id}` | entity、expected_version、edit_note、sources |
+| create_relation / replace_relation / delete_relation | `POST /api/catalog/relations` / `PUT|DELETE .../{id}` | relation 或版本与证据 |
+| edit_track_content | `POST|PUT|DELETE /api/catalog/tracks/{id}/contents[/position]` | inclusion 或版本与证据 |
+
+动态 field、词项与 rule_codes 每次从 definitions 校验，描述中保留目标实例、读写属性和所需权限。工具输入应遵循当前 schema，不自行加入旧字段。
+
+### 查询结果的完整性
+
+- **关键词**：total_relation=index_snapshot；按 has_more 和 next_cursor 继续，items 为空也可能还有下一页。保持查询、筛选、排序、语言、limit 与身份，PIT 过期后重新开始。
+- **关系**：每批最多 20 个主体，每个主体单独分页。覆盖固定结构、语义关系和 definitions 声明的实体属性引用，含嵌套 group/list。
+- **上下文引用**：读 references 的 field / entity_id；via 标明主体通过哪些非端点属性被引用，不能只遍历 source_id / target_id。
+- **递归**：维护待查 ID、已访问 ID 和每个主体的页进度，处理 unavailable_ids 与 definition_etag。接口只读可见的一跳，完整性仅限已经完成的查询范围。
+- **编辑**：批量关系 entities 是摘要；写入前调用 get_entity 获取完整实体与当前 version。
+
+参数和响应的完整说明见[实体查询与详情](/api-entities)与[检索](/api-search)。从发现规范生成工具后，应对目标实例做只读接入检查；查询能力不授予写入权限。
 
 ## 3. 认证与权限码
 
@@ -197,9 +102,7 @@ Agent 的全部编目能力都建立在同一条主干上：查重读 `GET /api/
 
 权限码来自令牌的 `permissions`：带 `*` 即全部目录权限。
 
-令牌完全没有 `permissions` 字段时（老令牌或未按权限组配置的实例）才按角色兜底：`admin` 放行全部目录码，`editor` 只放行 `catalog.entity.edit`，其余不放行。
-
-**PAT 身份不参与这条兜底**：它的权限就是内省返回的那一列，空着就是没有权限（即便账号是 admin）。
+目录权限只按 `permissions` 判断，缺失或空集合不补授角色权限。PAT 的权限取账号现时权限与令牌 scopes 的交集。
 
 ## 4. 写入契约
 
@@ -282,9 +185,9 @@ POST /api/catalog/entities/:id/unpublish
 ### 5.1 幂等键
 
 - 只有 `POST /api/catalog/entities` 与 `POST /api/catalog/relations` 认 `Idempotency-Key` 请求头。
-- 缓存键是「路由 + 用户 + key」，命中直接返回首创结果、不建重复数据。
-- 缓存存活 24 小时，存在进程内存里，重启即失效，也不做载荷哈希——同一个 key 换了载荷不会报冲突，会照首发结果返回。
-- 并发同 key 不保证单飞，重试前先回读确认。
+- 持久键按操作、用户与请求 key 区分，与业务写入在同一数据库事务提交，跨重启和副本有效。
+- 同键同载荷返回首创响应；同键不同载荷返回 `409 idempotency_conflict`。
+- 结果不确定时使用原 key 和原载荷重试；先核对既有结果，勿盲目换 key 重复创建。
 
 ### 5.2 乐观锁
 
@@ -294,7 +197,7 @@ POST /api/catalog/entities/:id/unpublish
 
 ### 5.3 限流
 
-限流按 IP + 路由、进程内存固定窗口：
+目录限流按账号 + 路由计数，匿名按客户端 IP + 路由；账号、组和全局策略可覆盖路由默认。当前计数在每个服务进程内独立。默认额度：
 
 | 路由 | 限额 |
 | --- | --- |
@@ -304,14 +207,16 @@ POST /api/catalog/entities/:id/unpublish
 | `GET /api/catalog/entities/stats` | 120/分钟（另需 `catalog.lifecycle.manage`） |
 | `GET /api/catalog/shelves/feed` | 60/分钟 |
 | `GET /api/users/:id/contributions` | 120/分钟 |
+| `GET /api/catalog/entities/:id/links`、批量 identity、toc、editions、composition | 120/分钟 |
+| `POST /api/catalog/relationships/query` | 60/分钟 |
 | `GET /api/catalog/compare` | 10/分钟 |
 | `POST /api/importer/preview` | 10/分钟 |
 
 写入接口没有路由级限流，但仍受网关按 IP 的约束。
 
-命中限流的路由**每个响应**都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数）。
+受限路由每个响应都带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数）。
 
-超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。
+超限响应 `429 { "error": "rate_limited" }` 并带 `Retry-After`（秒）。策略明确不限时不发窗口头；完整策略和网关边界见[API 概览](/api-overview)。
 
 ## 6. 错误码与自愈策略
 
@@ -334,7 +239,7 @@ POST /api/catalog/entities/:id/unpublish
 | 400 | `four_locale_names_required` | 定义 / 货架 / 外部库的名称缺语种（冒号后列出缺失项，如 `four_locale_names_required: zh-TW,ja-JP`） | 找齐四语名称（`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`）后重提定义草稿；不要靠停用条目绕开校验 |
 | 400 | `parent_required` | 缺结构归属：`content_unit` / `expression` 缺 `work_id`、`medium` 缺 `release_id`、`track` 缺 `medium_id` | 补归属，或改到正确的层级提交 |
 | 400 | `undeclared_release_subject` | Track 收录的表达所属 Work 没有在该发行的 `subjects` 中声明 | 在该发行上补 `subjects`，再重放 Track |
-| 400 | `invalid_relation_type` / `invalid_endpoints` / `invalid_endpoint_types` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系语义校验失败：码不存在或未启用、端点 kind 或类型不允许（自环也走这里）、重复边、超基数、成环 | 只用 definitions 中 enabled 的码与允许的端点；自环一律不支持；先删冲突旧边再建 |
+| 400 | `invalid_relation_type` / `invalid_endpoints` / `duplicate_relation` / `cardinality_exceeded` / `relation_cycle` | 关系语义校验失败：码不存在或未启用、端点 kind 不允许（自环也走这里）、重复边、超基数、成环 | 只用 definitions 中 enabled 的码与允许的端点；自环一律不支持；先删冲突旧边再建 |
 | 400 | `invalid_term` / `invalid_position` | 词表值或排序值不在允许集合内 | 用 definitions 里对应字段的 vocabulary.terms；实体字段以 applicable_kinds 为准 |
 | 400 | `invalid_status` | 状态值不在 `draft` / `pending_review` / `published` / `deleted` / `merged` 之内；或状态机不允许该动作（下架只接受 `published`，生命周期端点拒绝已 `deleted` / `merged` 的实体） | 状态值按五档写；动作不合法先 `GET` 读回当前 `status`：已是 `draft` 不必下架，`deleted` / `merged` 要恢复只能新建 |
 | 400 | `field_not_searchable` / `unknown_field` | `field` 过滤的字段未声明、链路含停用字段，或字段码不存在 | 从 definitions 取字段集与 `searchable`，不要按名称猜 |
@@ -342,7 +247,10 @@ POST /api/catalog/entities/:id/unpublish
 | 401 | `invalid_token` | **PAT** 无效 / 已吊销 / 已过期 / 账号被封禁（不细分原因；读端点也照此返回） | 核对是不是把 `mfp_` 令牌写错或已被吊销；换一张新令牌，不要重试同一张 |
 | 403 | `forbidden` | 已登录但缺对应权限码，或不是该条目的可写者 | 核对令牌 `permissions`；发布、合并归生命周期权限 |
 | 404 | `not_found` | 不存在，或对调用者不可见（不区分两者） | 用查重响应里的 id；未发布条目只对创建者与持权限者可见 |
+| 409 | `idempotency_conflict` | 同一个创建键复用了不同载荷 | 核对原请求与返回结果；同一操作重试保持原键和原载荷 |
 | 409 | `version_conflict` | `expected_version` 与当前版本不一致 | 回读实体取最新 version 再重放，不盲目重试 |
+| 503 | `search_unavailable` | 搜索未配置、未就绪或故障 | 等待恢复，不把失败当成零命中，不切换数据库文本搜索 |
+| 400 | `invalid_search_cursor` / `search_cursor_expired` / `search_window_exceeded` | 搜索 cursor 不匹配、快照过期或 offset 越界 | 保持查询参数继续 cursor；过期后从首请求重启 |
 | 429 | `rate_limited` | 命中路由级限流 | 按 `Retry-After` 退避后重试；命中限流的路由每个响应都带 `X-RateLimit-*`，可用 `Remaining` / `Reset` 提前节流 |
 | 500 | `database_error` | 服务端数据库故障（不透出 SQL 细节） | 停止写入，把错误码与请求摘要一起上报 |
 | 503 | `auth_unavailable` | PAT 请求问不到账号服务（内省不可达 / 未配置 `AUTH_URL`） | 这是依赖故障：**退避重试**，不要当成凭据问题去换令牌 |
@@ -365,5 +273,5 @@ agent / work  →  content_unit / expression  →  release（声明 subjects） 
 - [新建与编辑](/api-edit)：写入 DTO、乐观锁、关系与生命周期
 - [API 概览](/api-overview)：能力分组、分页、限流与可见性
 - [实体查询与详情](/api-entities)：过滤参数与详情、关系、收录反查
-- [元数据目录](/catalog)：固定层级与编目边界
+- [元数据目录教程](/catalog)：固定层级与编目边界
 - [权威编目与审查准则](/curation-guide)：题名、证据与审查口径

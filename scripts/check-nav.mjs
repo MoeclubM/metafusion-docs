@@ -1,94 +1,78 @@
-// 文档站导航守卫：CI 与本地都用 `node scripts/check-nav.mjs` 跑。
-//
-// 侧栏与导航已由每页 frontmatter 单源生成，所以"检查配置里的侧栏链接"这种
-// 老写法会静默变成 0 条通过。这里改查真正会跑偏的四件事：
-//   1. 每个内容页都有 title / group / order，group 在 config.mts 声明的分区里，order 是数字；
-//   2. 页面第一个 H1 与 title 完全一致（侧栏文字取 title，不一致就是三处口径又分家了）；
-//   3. 同一分区内 order 不重号；
-//   4. 正文里的站内链接 `](/slug)` 指向真实存在的页面。
-// 任何一项不满足都非零退出，并且一条都不静默跳过：解析不到分区清单时直接失败。
-
+// 导航、首页入口与站内锚点检查。使用 VitePress 渲染器生成锚点，避免另写一套标题规则。
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createMarkdownRenderer } from 'vitepress';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const docsDir = join(root, 'docs');
 const config = readFileSync(join(docsDir, '.vitepress', 'config.mts'), 'utf8');
+const groups = [...config.matchAll(/\{\s*key:\s*'([a-z-]+)'\s*,\s*label:/g)].map((m) => m[1]);
+if (!groups.length) throw new Error('check-nav: 无法读取分区清单，请同步检查配置与校验器。');
 
 const problems = [];
-const add = (file, msg) => problems.push(`${file}: ${msg}`);
-
-const groups = [...config.matchAll(/\{\s*key:\s*'([a-z-]+)'\s*,\s*label:/g)].map((m) => m[1]);
-if (groups.length === 0)
-  throw new Error(
-    'check-nav: 没能从 config.mts 解析出任何分区 key —— 配置格式变了，请同步改这个检查，不要让它空转'
-  );
-
-const files = readdirSync(docsDir).filter((f) => f.endsWith('.md'));
-const slugs = new Set(files.map((f) => f.replace(/\.md$/, '')));
+const add = (file, message) => problems.push(`${file}: ${message}`);
+const files = readdirSync(docsDir).filter((file) => file.endsWith('.md'));
+const pages = new Map();
 const seen = new Map();
+const md = await createMarkdownRenderer(docsDir);
+let checkedLinks = 0;
 
 for (const file of files) {
-  const raw = readFileSync(join(docsDir, file), 'utf8');
-  const block = /^---\n([\s\S]*?)\n---\n/.exec(raw);
+  const raw = readFileSync(join(docsDir, file), 'utf8').replace(/\r\n/g, '\n');
+  const env = {};
+  const html = md.render(raw, env);
+  const fields = env.frontmatter ?? {};
   const slug = file.replace(/\.md$/, '');
-
-  if (!block) {
-    // index.md 是首页（layout: home），本来就不进导航；其余页面缺 frontmatter 即为问题
-    if (slug !== 'index') add(file, '缺 frontmatter（导航由 title/group/order 单源生成）');
-    continue;
-  }
-
-  const fields = new Map();
-  for (const line of block[1].split('\n')) {
-    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (kv) fields.set(kv[1], kv[2].trim().replace(/^["']|["']$/g, ''));
-  }
-  if (fields.get('layout') === 'home') continue;
-
-  const title = fields.get('title');
-  const group = fields.get('group');
-  const order = fields.get('order');
-
-  if (!title) add(file, '缺 title');
-  if (!group) add(file, '缺 group');
-  else if (!groups.includes(group)) add(file, `group "${group}" 不在分区清单（${groups.join(' / ')}）`);
-  if (!order || !/^\d+$/.test(order)) add(file, `order "${order ?? '(空)'}" 不是数字`);
-
-  if (title && group && /^\d+$/.test(order || '')) {
-    const key = `${group}:${order}`;
-    if (seen.has(key)) add(file, `order ${order} 与 ${seen.get(key)} 重号`);
+  const anchors = new Set([...html.matchAll(/<h[1-6][^>]*\bid="([^"]+)"/g)].map((m) => m[1]));
+  const links = [...(env.links ?? [])];
+  if (fields.layout === 'home') {
+    links.push(...(fields.hero?.actions ?? []).map((item) => item.link).filter(Boolean));
+    links.push(...(fields.features ?? []).map((item) => item.link).filter(Boolean));
+  } else {
+    if (!/^---\n/.test(raw)) add(file, '缺 frontmatter');
+    if (!fields.title) add(file, '缺 title');
+    if (!fields.description) add(file, '缺 description');
+    if (!groups.includes(fields.group)) add(file, `未声明的 group "${fields.group ?? ''}"`);
+    if (!Number.isInteger(fields.order) || fields.order < 0) add(file, 'order 必须是非负整数');
+    const key = `${fields.group}:${fields.order}`;
+    if (seen.has(key)) add(file, `order 与 ${seen.get(key)} 重号`);
     else seen.set(key, file);
+    const tokens = md.parse(env.content ?? raw, {});
+    const h1Index = tokens.findIndex((token) => token.type === 'heading_open' && token.tag === 'h1');
+    const h1 = h1Index < 0 ? '' : tokens[h1Index + 1].content.trim();
+    if (h1 !== fields.title) add(file, `H1 "${h1}" 与 title "${fields.title ?? ''}" 不一致`);
   }
+  pages.set(slug, { file, fields, anchors, links });
+}
 
-  if (title) {
-    let inFence = false;
-    let h1 = null;
-    const lines = raw.slice(block[0].length).split('\n');
-    for (const line of lines) {
-      if (/^```/.test(line)) inFence = !inFence;
-      else if (!inFence && /^# /.test(line)) {
-        h1 = line.slice(2).trim();
-        break;
-      }
+for (const group of groups) {
+  if (![...pages.values()].some((page) => page.fields.group === group))
+    add('config.mts', `分区 ${group} 没有页面`);
+}
+
+for (const [slug, page] of pages) {
+  for (const link of page.links) {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(link)) continue;
+    const url = new URL(link, `https://docs.invalid/${slug}`);
+    const path = decodeURIComponent(url.pathname).replace(/^\/docs\//, '/');
+    const target = path.replace(/^\//, '').replace(/\.(?:md|html)$/, '').replace(/\/$/, '') || 'index';
+    const destination = pages.get(target);
+    if (!destination) {
+      if (!existsSync(join(docsDir, 'public', path.replace(/^\//, ''))))
+        add(page.file, `站内链接 ${link} 指向不存在的页面或资源`);
+      continue;
     }
-    if (h1 === null) add(file, '正文没有 H1（页面顶部会缺标题）');
-    else if (h1 !== title.trim()) add(file, `H1 "${h1}" 与 title "${title}" 不一致`);
-  }
-
-  for (const link of raw.matchAll(/\]\((\/[a-z0-9-]+)(?:#[^)]*)?\)/g)) {
-    const target = link[1].slice(1);
-    if (!slugs.has(target)) add(file, `站内链接 ${link[1]} 指向不存在的页面`);
+    checkedLinks++;
+    const anchor = decodeURIComponent(url.hash.slice(1));
+    if (anchor && !destination.anchors.has(anchor))
+      add(page.file, `站内链接 ${link} 的锚点不存在`);
   }
 }
 
-const contentPages = files.filter((f) => f !== 'index.md').length;
 if (problems.length) {
-  console.error('文档站导航检查未通过：');
-  for (const p of problems) console.error('  - ' + p);
+  console.error('文档导航检查未通过：');
+  for (const problem of problems) console.error('  - ' + problem);
   process.exit(1);
 }
-console.log(
-  `文档站导航检查通过：${contentPages} 个内容页、${groups.length} 个分区，title 与 H1 一致、站内链接全部可达`
-);
+console.log(`文档导航检查通过：${pages.size - 1} 个内容页、${groups.length} 个分区、${checkedLinks} 个页面链接；标题、首页入口与锚点可达。`);

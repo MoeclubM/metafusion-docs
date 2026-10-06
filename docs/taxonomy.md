@@ -1,102 +1,47 @@
 ---
 title: "标签、货架与多语言体系"
-description: "MetaFusion 的标签体系、虚拟货架规则、封面比例与多语言本地化。"
+description: "理解标签、首页分区与多语言名称，避免混淆分类和实体种类。"
 order: 30
 group: "model"
 ---
 
 # 标签、货架与多语言体系
 
-MetaFusion 的固定实体骨架是八类（`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`）。描述性分类使用开放标签，可写属性由服务端字段的 `applicable_kinds` 声明，规格由发行版与载体表达。实体业务 `types` 已移除。
+实体种类决定资料的结构；标签描述主题和风格；货架组织浏览入口；语言资料保存不同名称。这几种信息各有用途。
 
-平台没有硬编码的 `media_type` 与单继承分类树。
+## 标签
 
-## 1. 自由标签体系
+标签是平铺的自由字符串，常用于流派、题材、风格和检索词，例如「科幻」「机甲」「J-Pop」。它们保存在 `attributes.tags` 中，可写范围按站点定义决定。
 
-标签是实体属性 `attributes.tags` 里的平铺字符串列表，用来放流派、题材、风格与大众检索词（`J-Pop`、`科幻`、`机甲`、`治愈`、`摇滚`）。
+标签不改变实体 kind、归属或可写字段。承载格式如 CD、BD、黑胶属于载体属性，发行地区和版别属于发行资料。
 
-::: warning 注意
-默认 `tags` 适用于全部八种 kind；目标实例的可写范围以 `definitions.fields.tags.applicable_kinds` 为准。标签不决定 kind、结构归属、可写字段或模板，不需要先声明业务类型。
-:::
+探索页选择多个标签时，匹配任意一个即可进入结果。标签建议来自已发布词条的频次聚合。
 
-- **平铺无分类**：标签没有层级与分类树，也没有独立的字典表。后台可声明「标签」字段的呈现方式，但标签本身仍是自由字符串。
-- **与规格分工**：专辑、动画、小说等描述可作为开放标签，不设固定分类词表；CD / BD / Vinyl / 纸张 / Web 等承载格式落在 Medium，其发行地区、渠道、版别落在 Release。
-- **频次聚合**：`GET /api/catalog/tags` 就地展开已发布实体的标签并统计频次（`q` 过滤、`limit` 默认 200 上限 500），供标签云与筛选建议。
-- **筛选**：`GET /api/catalog/entities?tags=科幻,机甲` 是任一命中即返回（OR，服务端走 JSONB 包含匹配）；要「同时满足」需要调用方自行求交。
+## 货架与首页分区
 
-## 2. 虚拟货架
+系统货架由管理者配置查询规则，按标签、字段、词项或关系组织作品。规则条件之间取交集，同一条件里的候选取并集；货架不会自动把载体格式变成作品属性。
 
-货架（shelf）是首页与探索页共用的聚合规则，由服务端定义并求值，前端不硬编码分类：
+登录用户可以调整首页顺序与显隐。接口还支持为自己覆盖系统货架的展示规则或自建分区，最多 20 项；具体可用的设置入口以页面为准。这些个人设置不改变其他人的首页。
 
-```json
-{
-  "id": 3,
-  "slug": "theatrical-anime",
-  "names": { "zh-CN": "剧场动画", "zh-TW": "劇場動畫", "ja": "劇場アニメ", "en-US": "Theatrical anime" },
-  "query": {
-    "tags": ["剧场动画"],
-    "fields": { "country": ["JP"] },
-    "relations": ["adaptation_of"]
-  },
-  "sort": "updated",
-  "icon": "Film",
-  "enabled": true,
-  "sort_order": 10
-}
-```
+规则、查询参数与个人设置的协议见[动态定义与配置](/api-definitions)。
 
-- `sort` 取 `updated`（默认，按最后更新时间倒序）、`created`（按创建时间倒序；实体 id 是 UUIDv7，时间有序，毫秒精度）、`title`（按题名升序）；其它取值返回 `400 invalid_sort`。
-- `query` 支持 `tags` / `fields` / `vocab_terms` / `relations`，条件之间是 AND，同一个数组内是 OR；空 query 收录全部已发布作品。货架只求值 Work，不会把 Medium.format 自动投影为 Work 字段。
-- 公开读端点：`GET /api/catalog/shelves`（只返回已启用的规则）与 `GET /api/catalog/shelves/feed`（带求值后的条目，`per_shelf` 默认 12、上限 100）。
-- **新建与修改货架需要 `catalog.shelves.manage`**（管理台 `/api/admin/shelves`），普通用户不能自建货架。
-- `names` 与其它定义名称同一条硬约束：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`，缺一项返回 `400 four_locale_names_required`。
+## 多语言名称
 
-### 自定义首页分区
+实体的 `translations` 按语言分组，每个语言项可包含题名、简介和别名。原语言题名应放在对应语言项中。
 
-登录用户可用 `GET|PUT /api/catalog/me/home-preferences` 自定义首页分区：
+界面支持简体中文、繁体中文、英语和日语。显示时会按可用语言回退，回退仅影响展示，不修改原始资料。
 
-- `order` / `hidden` 决定顺序与显隐；`sections` 是「覆盖系统货架 + 自建分区」的混合列表。
-- `sections` 里的 `slug` 与已启用的系统货架同名即覆盖该货架给本人看的 `names` / `query` / `sort` / `icon`，不同名即新增分区。
-- 最多 20 条，名称至少要有 `zh-CN`，`sort` 取值与系统货架同一闭集。
-- `order` / `hidden` 里的未知 slug 不再报错（旧行为是 `unknown_shelf`），原样保留并在合并时忽略。管理员删掉货架后用户仍能保存偏好，货架以同名重建时排序也立刻恢复。
-- `/shelves/feed` 按该偏好合并、重排与隐藏；每条 `shelf` 带 `source`（`system` / `custom`）。系统货架即使被用户覆盖也仍是 `system`（前端据此不给「删除分区」入口）。
+字段、关系、词表和货架的显示名来自站点定义，启用的定义名称要求四语齐备；实体自身的语言资料在发布时至少一条。
 
-## 3. 封面比例
+## 图片与展示
 
-封面比例是展示建议，不是强制约束：
+图片引用按保存顺序显示，第一张是封面。尽量保留自然比例，避免为了适配卡片而拉伸或裁切；封面比例不是通用写入限制。
 
-- **推断来源**：前端按封面图的自然比例，或按标签关键词推断惯例比例（专辑 / 单曲 / OST → 1:1，电影 / 剧集 / 动画 → 2:3，小说 / 漫画 → 3:4）。
-- **没有可写的手动比例字段**：`cover_aspect` 不在 definitions 里声明，实体属性只接受已声明字段，写 `attributes.cover_aspect` 会被 `unknown_field` 拒绝；目录服务的实体响应里也没有 `cover_aspect`。
+长期引用图片时使用稳定内容地址，临时下载地址可能过期。来源、许可和上传要求见[词条编辑与合并规范](/editing-guide)与[资源上传与下载](/upload-download)。
 
-::: tip
-封面组件保留了接收手动比例的能力，但当前没有写入路径给它值。
-:::
+## 继续阅读
 
-- **图片引用**：`pictures` 只保存引用（`url` + `caption` + `taken_at` + `source`），目录侧不抓取、不转存；需要长期稳定的图片地址就用存储服务的 `GET /api/storage/assets/:id/content`。
-- 常见比例：音乐 1:1、影视 2:3、书籍 3:4（见 [权威编目与审查准则](/curation-guide)）。
-
-## 4. 多语言本地化
-
-- 每个实体有 `original_language` 与 `translations`：后者是按 locale 分组的对象，每个语种含 `title` / `summary` / `aliases`；原语言题名归它自己的语种行。
-- 站内固定使用四种界面语言：`zh-CN`、`zh-TW`、`en-US`、`ja-JP`。
-- 展示回退链：请求语言 → `en-US` → `original_language` → 实体基础字段（只影响展示，不回写数据）。
-- 动态术语（kind、关系码、词表项、字段名）的多语言名称来自 definitions，前端用现成 helper 解析，不硬编码。
-- **定义侧的名称是四语硬约束**：字段（含子字段与 `unit`）、词表与词项、关系正反向名与 `group_names`、模板与分区、场景方案，以及货架与外部权威库的 `names`，都必须同时带 `zh-CN` / `zh-TW` / `en-US` 与 `ja` 或 `ja-JP`。
-
-缺语种返回 `400 four_locale_names_required`；实体自身的 `translations` 只要求发布时至少一条。
-
-## 5. 探索页与筛选
-
-`/explore` 与列表页共用 `GET /api/catalog/entities` 的一套参数：
-
-- **货架**：顶部可切换已启用的货架。
-- **关键词**：`q` 按标题与译文做子串匹配（见 [检索](/api-search)）。
-- **多维过滤**：`kind` / `kinds` / `status` / `tags` / `work_id` / `content_unit_id` / `release_id` / `medium_id` / `parent_id` / `field` + `value`；没有实体业务类型筛选。
-- **排序**：列表默认按 `updated_at DESC, id`；按关联 id 查结构子项时按 `position` 升序（当前没有「按热度」这类排序）。
-- **分页**：`limit`（默认 50、上限 100）/ `offset`，响应带真实 `total`。
-
-## 相关页面
-
-- [实体查询与详情](/api-entities)：完整的过滤参数与详情端点
-- [IFLA LRM 增强版实体模型](/frbr-model)：八类骨架与字段
-- [检索](/api-search)：关键词检索的匹配口径
+- [元数据目录教程](/catalog)：实体种类和事实分层。
+- [实体模型与字段](/frbr-model)：结构字段和动态属性。
+- [实体查询与详情](/api-entities)：列表筛选。
+- [检索](/api-search)：关键词查询。

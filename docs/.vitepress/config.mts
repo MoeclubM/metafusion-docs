@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const sections: { key: string; label: string }[] = [
-  { key: 'intro', label: '认识 MetaFusion' },
-  { key: 'participate', label: '使用与共建' },
-  { key: 'model', label: '数据模型与术语' },
+  { key: 'intro', label: '开始使用' },
+  { key: 'participate', label: '参与共建' },
+  { key: 'model', label: '理解数据' },
   { key: 'api', label: 'API 与 Agent 接入' },
-  { key: 'legal', label: '条款与站务' }
+  { key: 'legal', label: '条款与支持' }
 ];
 
 interface Page {
@@ -29,7 +29,7 @@ interface Page {
 }
 
 function readPage(file: string): Page | null {
-  const raw = readFileSync(join(srcDir, file), 'utf8');
+  const raw = readFileSync(join(srcDir, file), 'utf8').replace(/\r\n/g, '\n');
   const block = /^---\n([\s\S]*?)\n---\n/.exec(raw);
   if (!block) return null;
 
@@ -50,7 +50,8 @@ function readPage(file: string): Page | null {
   if (!sections.some((item) => item.key === group))
     problems.push(`group "${group}" 不是已声明的分区（${sections.map((s) => s.key).join(' / ')}）`);
   if (!text) problems.push('缺少 title');
-  if (!Number.isFinite(order)) problems.push(`order "${fields.get('order')}" 不是数字`);
+  if (!fields.has('order') || !Number.isInteger(order) || order < 0)
+    problems.push(`order "${fields.get('order')}" 不是非负整数`);
   if (problems.length)
     throw new Error(`[docs] ${file}: ${problems.join('；')}。导航由 frontmatter 单源生成，请补齐再构建。`);
 
@@ -78,9 +79,7 @@ const grouped = sections.map((section) => ({
   items: pages.filter((page) => page.group === section.key).map(({ text, link }) => ({ text, link }))
 }));
 
-// 一份全站侧栏：五个分组默认折叠，当前页所在分组自动展开（VitePress 对 has-active
-// 的分组强制不折叠）。这样上一篇/下一篇能顺着分区边界走完 26 页，
-// 不会再在每个分区的末页断掉。
+// 全站侧栏由页面元数据生成；当前分区自动展开，上一篇/下一篇跨分区连续。
 const sidebar = grouped.map((group) => ({
   text: group.label,
   collapsed: true,
@@ -88,10 +87,9 @@ const sidebar = grouped.map((group) => ({
 }));
 
 export default defineConfig({
-  ignoreDeadLinks: true,
   base: '/docs/',
   title: 'MetaFusion 平台文档',
-  description: 'MetaFusion 开放媒体资源站与元数据共建平台文档中心',
+  description: 'MetaFusion 使用指南、编目规范与 API 参考',
   lang: 'zh-CN',
   lastUpdated: false,
   cleanUrls: true,
@@ -134,8 +132,8 @@ export default defineConfig({
     ],
 
     footer: {
-      message: '基于 Apache-2.0 协议开放 · 社区共建开放元数据资源站',
-      copyright: 'Copyright © 2026 MoeClub Ltd · MetaFusion Resource Hub'
+      message: 'MetaFusion 使用指南与 API 参考',
+      copyright: 'Copyright © 2026 MoeClub Ltd'
     },
 
     docFooter: {

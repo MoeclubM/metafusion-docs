@@ -1,98 +1,113 @@
 ---
 title: "检索"
-description: "关键词检索的统一入口、匹配口径与 OpenSearch 现状。"
+description: "OpenSearch 关键词查询、结构筛选、索引快照计数、cursor 深分页与错误处理。"
 order: 40
 group: "api"
 ---
 
 # 检索
 
-检索与浏览是**同一个端点**：`GET /api/catalog/entities` 的 `q` 参数。
+关键词搜索与无关键词浏览共用 `GET /api/catalog/entities`。有非空 q 时使用 OpenSearch，无 q 时查询数据库。
 
-没有独立的 `/api/search`（也没有 `{ works, artists, releases, total }` 这种分组响应），返回值始终是统一的 `{ items, total }`。
+## 匹配与筛选
 
-## 匹配口径
+搜索覆盖基础题名、译名、别名、摘要、标签和外部编号，支持词项前缀与大小写不敏感的子串匹配。默认按相关度排序，题名匹配权重较高；可以显式指定 updated_at、created_at 或 title 排序。
 
-未配置或不能使用 OpenSearch 时，`q` 回退到 PostgreSQL 的子串匹配（其中 `%` / `_` 按字面转义）：
+q 可以和当前列表过滤组合：kind / kinds、status、tags、original_language、has_pictures、固定归属 ID，以及 field + value 的精确属性筛选。嵌套组、列表和收录伪字段按 definitions 的搜索声明校验。完整参数见[实体查询与详情](/api-entities)。
 
-```sql
-title ILIKE '%<q>%' OR (document->'translations')::text ILIKE '%<q>%'
-OR (document->'external_ids')::text ILIKE '%<q>%'
-```
-
-- 大小写不敏感的子串匹配（不是分词检索）：`攻壳` 能命中 `攻壳机动队`
-- 标题列上另有一份 `to_tsvector('simple', title)` 的 GIN 索引，但 `ILIKE '%…%'` 这种前后都带通配的匹配用不上它
-- 译文侧把整段 JSON 转文本匹配，数据量大时是顺序扫描
-
-::: warning 当前没有按相关度排序的全文检索
-PostgreSQL 回退路径是子串检索，不提供分词相关度排序。配置并就绪的 OpenSearch 可提供候选相关度排序；最终可见性和过滤仍由 PostgreSQL 决定。
-:::
-
-## 接口
+q 等文本参数最多 256 字节，须为合法 UTF-8；除制表符外的控制字符会被拒绝。客户端应使用 URL 编码，不手工拼接关键词。
 
 ```http
-GET /api/catalog/entities?q=keyword&kind=work&limit=10&offset=0
 GET /api/catalog/entities?q=久石让&kind=agent&limit=10
 GET /api/catalog/entities?q=VIZL&kind=release&limit=10
+GET /api/catalog/entities?q=城市光影&kind=work&sort=title&locale=zh-CN&limit=20
 ```
 
-`q` 可以与所有列表过滤参数组合（完整清单见 [实体查询与详情](/api-entities)）：
+## 响应与计数
 
-| 参数 | 说明 |
-|---|---|
-| `q` | 关键词（标题与译文的子串匹配） |
-| `kind` / `kinds` | `agent` \| `collection` \| `work` \| `content_unit` \| `expression` \| `release` \| `medium` \| `track`（`kinds` 可多值） |
-| `status` | 状态过滤；实体业务 types 及其筛选已移除 |
-| `tags` | 标签过滤（多值，命中任一） |
-| `work_id` / `content_unit_id` / `release_id` / `medium_id` / `parent_id` | 关联过滤 |
-| `field` + `value` | 按属性字段精确过滤（支持点分路径） |
-| `limit` / `offset` | 分页（`limit` 默认 50、上限 100） |
-
-## 示例
-
-```bash
-curl "/api/catalog/entities?q=blade+runner&kind=work&limit=5" -H "User-Agent: MyApp/1.0 (you@example.com)"
-
-# 中文
-curl "/api/catalog/entities?q=攻壳机动队&kind=work&limit=3" -H "User-Agent: MyApp/1.0 (you@example.com)"
-```
-
-响应：
+下面省略实体中与示例无关的字段：
 
 ```json
 {
   "items": [
     {
-      "id": "deadbeef-0000-4000-8000-000000000001",
+      "id": "01900000-0000-7000-8000-000000000001",
       "kind": "work",
-      "title": "攻壳机动队",
-      "original_language": "ja",
-      "translations": { "zh-CN": { "title": "攻壳机动队" }, "en-US": { "title": "Ghost in the Shell" } },
-      "attributes": { "tags": ["赛博朋克"] },
+      "version": 1,
+      "title": "城市光影",
       "status": "published"
     }
   ],
-  "total": 12
+  "total": 12,
+  "total_relation": "index_snapshot",
+  "has_more": true,
+  "next_cursor": "<opaque_cursor>"
 }
 ```
 
-## 搜索引擎现状
+| 字段 | 关键词查询的含义 |
+| --- | --- |
+| items | 当前页经过数据库权限与精确筛选复核的完整实体 |
+| total | 当前搜索索引快照中的命中数 |
+| total_relation | `index_snapshot`，明确不是当前数据库精确计数 |
+| has_more | 索引分页是否还有候选 |
+| next_cursor | 继续查询的短期不透明 cursor，有下一页时返回 |
 
-PostgreSQL 是事实来源且可以独立运行；OpenSearch 是可选候选索引。
+索引更新有延迟，数据库在回读时再次检查当前可见性与筛选条件。因此 items 可能不足 limit，甚至为空，但 has_more 仍为 true。判断结束使用 has_more，不用「本页为空」或「本页少于 limit」。
 
-- 标题走 `to_tsvector('simple', title)` 的 GIN 索引，属性走 `document` 的 JSONB 路径索引
-- 标签和属性使用当前数据库索引；实体业务类型及其索引已移除
+无关键词浏览的响应使用 `total_relation="eq"`，total 是数据库计数，并带 has_more。修改后要确认当前实体内容，直接回读详情；搜索无命中不能证明实体不存在。
 
-OpenSearch 2.x 已在编排里（`--profile search`）。配置 `OPENSEARCH_URL` 后服务启动索引器；关键词查询在允许的候选窗口内使用索引结果，PostgreSQL 回读实体、检查权限并计算最终 total。索引不可用、无命中、候选超界或结构/字段查询不适合走索引时回退 PostgreSQL；索引最终过滤后为空也回退。开 profile 仍须确保 URL 和索引就绪。
+## 首页与深分页
 
-## 与前端联动
+limit 默认 50，允许 1–100；offset 默认 0，允许非负整数。page 从 1 起，是 offset 的便捷写法，不能与 offset 同时提交。
 
-- 首页检索框跳转到 `/explore?q=...`
-- `/explore` 的搜索与 `GET /api/catalog/entities?q=...` 使用同一后端查询
-- 详情页的关联推荐走关联 id 过滤与 `GET /api/catalog/entities/:id/relations`，不是独立检索端点
+关键词查询的 offset + limit 不能超过 10000。更多结果使用 next_cursor，继续请求时：
 
-## SEO
+1. 保持 q、全部筛选、sort、order、locale、limit 与原请求一致。
+2. 使用原响应的 next_cursor，移除 offset 和 page。
+3. 保持同一调用身份，按新响应的 has_more 继续。
+4. cursor 对应 OpenSearch PIT 快照，每次搜索保活一分钟；过期后重新从首请求开始。
 
-- 元数据页 SSR 可被爬虫收录
-- 媒体二进制按绑定实体可见性控制；公开实体绑定的文件可匿名读取
-- `robots.txt` 仅控制抓取索引，不承担访问权限判定
+cursor 不能用于无关键词浏览，不可解析后自行修改，也不能跨查询或身份复用。继续分页使用同一索引快照；实体内容和可见性仍按数据库当前事实复核。
+
+## 最小分页示例
+
+```python
+import os
+import requests
+
+url = os.environ["METAFUSION_BASE_URL"].rstrip("/") + "/api/catalog/entities"
+params = {"q": "城市光影", "kind": "work", "limit": 50}
+while True:
+    response = requests.get(url, params=params, timeout=15)
+    response.raise_for_status()
+    page = response.json()
+    for entity in page["items"]:
+        print(entity["id"], entity["title"])
+    if not page["has_more"]:
+        break
+    params["cursor"] = page["next_cursor"]
+```
+
+这段示例读取匿名可见的数据。需要查看账号可见范围时配置[认证与凭证](/api-auth)；遇到 429 时按 Retry-After 等待。分页过期或失败时停止并记录已读取范围，不把部分结果报告为全集。
+
+## 失败与重试
+
+| HTTP / error | 含义与处理 |
+| --- | --- |
+| 400 invalid_limit / invalid_offset / invalid_page | 分页值不合法，修正参数 |
+| 400 pagination_conflict | offset 与 page 冲突，或 cursor 与 offset/page 同时使用 |
+| 400 search_window_exceeded | offset 窗口超过 10000，改用 next_cursor |
+| 400 invalid_search_cursor | cursor 形状、查询绑定或身份不匹配；核对原请求，必要时重启搜索 |
+| 400 search_cursor_expired | 索引快照已过期，重启搜索 |
+| 400 invalid_query_param / query_too_long | 编码、字符或文本长度不合法 |
+| 503 search_unavailable | 搜索未配置、未就绪或故障，等待服务恢复 |
+| 429 rate_limited | 按 Retry-After 退避 |
+
+索引不可用时不回退数据库文本搜索。合法零命中返回 200 和空 items，has_more=false；503 与零命中须分别呈现和处理。
+
+## 实现与运行边界
+
+数据库保存目录事实，OpenSearch 承担关键词匹配、相关度和索引快照分页，目录服务回读当前实体。应用接入不需要直接连接搜索集群。
+
+部署、索引重建与迁移属于[主仓库开发文档](https://github.com/MoeclubM/MetaFusion/tree/main/docs/architecture)，这里仅维护对外查询契约。实体归属与关系的遍历使用[实体查询与详情](/api-entities)中的结构和关系接口。

@@ -11,7 +11,7 @@ group: "api"
 
 八类 kind 共用这两个端点：`agent` / `collection` / `work` / `content_unit` / `expression` / `release` / `medium` / `track`。
 按关联 id 过滤（`work_id` / `release_id` / `medium_id` / `content_unit_id` / `parent_id`）
-或按 `kind` / `tags` 过滤拿到子集；关系数据经 `/relations`、`/occurrences` 端点取。
+或按 `kind` / `tags` 过滤拿到子集；语义关系、结构与声明的实体引用可以经统一 links 或 relationships/query 读取，实际收录也可用 occurrences 反查。
 
 ## 列表与过滤
 
@@ -27,7 +27,8 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `kind` | 单个 kind 过滤 |
 | `kinds` | 多值 kind（重复出现或逗号分隔，命中任一即返回） |
 | `status` | 状态过滤（`draft` / `pending_review` / `published` …）；可见性另见 [API 概览](/api-overview) |
-| `q` | 标题与译文文本的子串匹配，见 [全文检索](/api-search) |
+| `original_language` / `has_pictures` | 原始语言精确筛选 / `has_pictures=1` 仅返回有图实体 |
+| `q` | 关键词查询，匹配、索引计数与分页见[检索](/api-search) |
 | `field` + `value` | 按 `document` 内属性字段精确过滤（支持点分路径，见下） |
 | `work_id` | 该作品下的内容单元与表达，以及声明收录它的发行版 |
 | `content_unit_id` | 该内容单元下的表达 |
@@ -36,11 +37,13 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `parent_id` | 同层子节点（内容单元 / 载体 / 曲目） |
 | `tags` | 多值标签过滤：重复出现或逗号分隔，命中任一即返回；服务端走 JSONB 包含匹配 |
 | `sort` / `order` / `locale` | sort 可取 updated_at / created_at / title，order 为 asc / desc；题名排序可指定 locale，未知排序/方向返回 invalid_sort / invalid_order |
-| `limit` / `offset` | 分页；`limit` 默认 50、上限 100，越界静默按 50 |
+| `limit` / `offset` | 默认 50 / 0；limit 为 1–100，offset 为非负整数，非法值返回 400 |
+| `page` | 从 1 起，等价 offset=(page-1)×limit，不能与 offset 同时提交 |
+| `cursor` | 仅用于关键词深分页，不能与 offset/page 同时提交；见[检索](/api-search) |
 
-响应为 `{ "items": [...], "total": <真实 COUNT> }`。
+无关键词浏览响应为 `{ "items": [...], "total": <数据库计数> }`。关键词查询还返回索引计数口径与深分页标记，见[检索](/api-search)。
 
-排序默认按 `updated_at DESC, id`；带 `content_unit_id` / `release_id` / `medium_id` / `parent_id` 时改按 `position` 升序，
+无关键词浏览默认按 `updated_at DESC, id`；带 `content_unit_id` / `release_id` / `medium_id` / `parent_id` 且未显式排序时改按 `position` 升序，
 便于直接渲染分碟与曲目顺序（`work_id` 不触发该排序，仍是默认序）。
 
 多值过滤在服务端完成，不会先取固定条数再由客户端过滤，避免合法候选被截断。
@@ -112,13 +115,23 @@ curl "/api/catalog/entities/<id>/relations" -H "User-Agent: MyApp/1.0 (you@examp
 
 `POST /api/catalog/entities/identity` 是只读批量解析，请求 `{ids:[...]}`，1–500 项，返回按请求 ID 索引的 `items` 与 `missing`。不可见/不存在进入 missing，数据库故障使整批失败。
 
-`GET /api/catalog/entities/:id/links?limit=50&offset=0` 返回 `{subject_id, definition_etag, items, entities, limit, offset, has_more}`。每项有 `key`、`rule_code`、`class`、`direction`、两端 ID、排序和可选的角色/定位/属性。规则从 definitions.relationship_rules 读取。固定结构项只能通过拥有者实体的结构字段、subjects 或 contents 编辑；语义关系用既有 relations 写入口。
+`GET /api/catalog/entities/:id/links?limit=50&offset=0` 返回 `{subject_id, definition_etag, items, entities, limit, offset, has_more}`。每项有 key、rule_code、class、direction、两端 ID、排序及可选角色、定位和属性。
+
+规则从 `definitions.relationship_rules` 发现，覆盖以下事实：
+
+| 规则码 / class | 权威数据与编辑方式 |
+| --- | --- |
+| `structure:*` / ownership、placement、inclusion | 固定归属、父子、subjects 与 contents，由拥有者实体或单条收录入口编辑 |
+| `relation:*` / semantic | 动态语义关系，通过 relations 端点编辑 |
+| `attribute:<path>` / reference | definitions 声明的实体属性引用，含嵌套 group/list，通过实体属性编辑 |
+
+例如规则码 `attribute:attachments[].content` 表示列表中的引用类型，具体 link.field 为 `attachments[0].content`。关系、发行对象和收录的附加引用在 `references:[{field,entity_id}]` 中保留原路径；当被查询主体是上下文引用而不是 source/target 时，`via:[field,...]` 标出匹配路径。引用只按定义解析，不从普通字符串猜测实体关系。
 
 统一 links 不是第二份事实存储。需要更多页时按 has_more 继续取数；404 是不存在/不可见，401/403、429、5xx 要分别处理。
 
 ### Agent 批量关系查询
 
-`POST /api/catalog/relationships/query` 是只读查询，批量读取主体的直接结构、收录和语义关系。关系码来自当前 `definitions.relationship_rules`，包括 GUI 扩展的 `relation:` 码。
+`POST /api/catalog/relationships/query` 是只读查询，批量读取主体的直接结构、收录、语义关系和声明的属性引用。规则来自当前 `definitions.relationship_rules`，包含 GUI 扩展的 relation 及嵌套属性引用。
 
 ```http
 POST /api/catalog/relationships/query
@@ -134,12 +147,12 @@ Content-Type: application/json
 
 | 参数 | 含义 |
 | --- | --- |
-| `ids` | 1–20个UUID，去重并保留请求顺序 |
-| `direction` | `both`（默认）、`outgoing`或`incoming`，相对于每个主体 |
+| `ids` | 1–20 个 UUID，去重并保留请求顺序 |
+| `direction` | both（默认）、outgoing 或 incoming，相对于每个主体 |
 | `rule_codes` | 可选数组，当前关系注册表中的完整码，例如 `structure:track_content`；多个码为命中任一 |
-| `peer_kinds` | 可选数组，八类kind中相对主体的另一端层级；多个kind为命中任一 |
-| `limit` | 每个主体的页大小，默认25，范围1–100 |
-| `offset` | 每个主体的偏移，默认0，范围0–10000 |
+| `peer_kinds` | 可选数组，八类 kind 的对端筛选；多个 kind 为命中任一 |
+| `limit` | 每个主体的页大小，默认 25，范围 1–100 |
+| `offset` | 每个主体的偏移，默认 0，须为非负整数，无 10000 上限 |
 
 筛选和端点可见性检查先于分页。响应含：
 
@@ -148,13 +161,27 @@ Content-Type: application/json
 - `entities`：去重的可见端点摘要，只有id、kind、version、title、original_language和translations；不能当作完整实体写回。
 - `unavailable_ids`：不存在或当前不可见的请求ID，两者不区分。
 
-items沿用links的边形状，事实方向始终为 `source_id → target_id`；`direction` 标明相对主体的方向，反向名称不反转事实。固定边只读，语义边仍由既有relations端点编辑。
+items 沿用 links 的边形状，事实方向始终为 `source_id → target_id`；direction 标明相对主体的方向，反向名称不反转事实。references 包含非端点实体引用，via 标记当前主体匹配的上下文路径；它们不能只靠 source_id / target_id 推断。
 
 单次请求的定义、主体与各页在一个一致性只读快照中读取；继续分页是新的快照。某页 `has_more=true` 时，可用该主体和相同筛选继续请求，offset增加本页limit。接口只读一跳，不自动展开全图；多页或多跳未完成时不能将结果称为全集。
+
+需要递归时，将本页端点及 references 中的可见实体 ID 加入待查队列，去重后每批最多 20 个主体。分别完成每个主体的 has_more 分页，再扩展下一跳；记录 definition_etag、已读页和 unavailable_ids。每次分页是新快照，数据变更时需重新核对范围。这里只能查询已声明的目录事实，外围文件、收藏或普通文本不会被自动推断为目录关系。
 
 例如，Expression向内筛选Track可查询实际收录位置，再沿Track的Medium和Release归属追踪发行；Work的release_subject只证明发行声明了该作品，不能证明某个录音被收录。Release向外筛选Medium可查询介质，完整曲序仍可用发行toc。参数错误返回400；数据库或网络失败使查询失败，不返回伪空结果。默认限流60次/分钟，按当前账户、组策略计算；429需遵循Retry-After。
 
 Track 的公开读取会过滤不可见表达的收录；普通编辑者整实体 PUT 删除或改写被过滤的历史引用会返回 403 forbidden，需有权查看完整事实的创建者或审核者处理。不要把裁剪后的公开视图直接当作完整备份。
+
+## 发行目录、组成与版本组
+
+| 端点 | 返回内容 |
+| --- | --- |
+| `GET /api/catalog/releases/:id/toc` | Release、按位置排序的 Medium / Track、去重 Expression 与 definition_etag |
+| `GET /api/catalog/expressions/:id/composition` | 直接 parts 与 wholes，关系及定义 ETag |
+| `GET /api/catalog/releases/:id/editions` | 显式 group 与 editions，未分组时 group=null、editions 为空 |
+
+发行 toc 在同一只读数据库快照内读取，各端点按调用者可见性过滤。composition 读取当前定义中用途为 expression_composition 的关系；editions 使用 release_group，不从共同 subjects 推断组。
+
+这些聚合入口适合页面展示；需要批量直接关系或递归遍历时使用 relationships/query，并按每个主体的分页标记继续读取。
 
 ## 批量表达详情
 
@@ -180,10 +207,10 @@ POST /api/catalog/expressions/details
 | `GET /api/catalog/external-databases` | 可用的外部权威库定义（`external_ids` 的合法键） |
 | `GET /api/catalog/compare?ids=a,b` | 2–6 个可见实体的字段对比；Release/Medium 附完整载体/轨目树，属性只对比 comparable 字段 |
 
-- `definitions` 返回 `fields` / `vocabularies` / `relations` / `templates` / `schemes` / `structure`，以及当前 `etag`、固定 `kinds` 和只读 `relationship_rules`；kind 名均为四语 map：`zh-CN` / `zh-TW` / `en-US` 加 `ja` 或 `ja-JP`
+- definitions 的字段与规则说明见[动态定义与配置](/api-definitions)。
 - `tags` 支持 `q` 过滤，`limit` 默认 200 上限 500
 - `shelves/feed` 的 `per_shelf` 默认 12、上限 100；登录用户按其首页偏好合并、重排与隐藏，每条 `shelf` 带 `source`（`system` / `custom`）
-- compare 的 ids 少于 2 或多于 6 返回 compare_requires_two_to_six；响应每项使用 entity 字段，Release/Medium 的载体树在 children 内，每项为 {medium, tracks}，不使用旧 release 键。
+- compare 需要 2–6 个实体，越界返回 `compare_requires_two_to_six`。每项使用 `entity`；Release/Medium 的载体树在 `children` 中，每项为 `{medium, tracks}`。
 
 ## 用户贡献流
 
@@ -250,11 +277,11 @@ GET /api/users/:id/contributions?tab=all&page=1&page_size=20
 
 ## 分页
 
-- `limit` / `offset`；`limit` 默认 50、上限 100（越界静默按 50）
-- 列表响应带真实 `total`，可直接做页码；分页只用 `limit` / `offset` 两个参数
+- 实体列表 limit 默认 50、范围 1–100，offset 非负；非法值返回 400，page 与 offset 互斥。
+- 无关键词浏览使用数据库 `total` 和 `limit` / `offset`；关键词深分页见[检索](/api-search)。
 
 ## 相关页面
 
 - [API 概览](/api-overview)：认证、限流与错误码
-- [全文检索](/api-search)：`q` 的匹配口径与 OpenSearch 现状
+- [检索](/api-search)：关键词、索引计数与分页
 - [新建与编辑](/api-edit)：写入、关系与生命周期

@@ -341,7 +341,7 @@ curl -X POST /api/catalog/entities \
   -d '{ ...同上... }'
 ```
 
-同一枚令牌能做什么，只由它在创建时选的 scopes（∩ 账号现时权限）决定：要写入就至少给 `catalog.entity.edit`，要发布 / 合并再给 `catalog.lifecycle.manage`。
+同一枚令牌能做什么，由创建时选择的 scopes 与账号现时权限共同决定：协作编辑与直接发布使用 `catalog.entity.edit`，合并、停用与下架另需 `catalog.lifecycle.manage`。自己的未发布草稿按账号身份维护。
 
 令牌不够权限时返回 `403 forbidden`，这与「令牌无效 / 已吊销」的 `401 invalid_token` 是两回事，别混用处理分支。
 
