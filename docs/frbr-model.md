@@ -55,6 +55,8 @@ MetaFusion 借用 IFLA LRM 的分层思想，并以八类固定实体、收录�
 
 `kind`、`work_id`、`release_id` 和 `medium_id` 写入后不能改归属；违反时返回 `immutable_scope`。同层父子受对应 Work、Release 或 Medium 的范围约束。
 
+写入实体引用须使用小写、带连字符的规范 UUID；结构引用与 definitions 声明的实体属性引用都受此约束，详见[实体引用格式](/api-edit#实体引用格式)。
+
 ## 发行对象与实际收录
 
 Release 没有 `work_id`，通过 `subjects[]` 声明收录了哪些作品：
@@ -80,6 +82,8 @@ Track 的 `contents[]` 是实际收录的权威来源：
 可以跨 Work 收录，但对应 Work 必须列入所属 Release 的 `subjects`。Track 的位置表示载体曲序，contents 的位置表示同一 Track 内多段内容的次序。
 
 `locator` 与附加属性按 definitions 的组字段及场景方案校验。定位仅属于这次收录，不随 Expression 在不同发行之间复制。
+
+整体写入 Track 时，未提供逐条 `sources` 的收录采用本次编辑来源；需要保留原证据时显式带回该数组，见[编辑实体](/api-edit#编辑实体)。
 
 ## 关系
 

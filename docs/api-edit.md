@@ -53,6 +53,12 @@ group: "api"
 - `citation` 不能为空
 - `url` 只要是链接就必须合法（`400 invalid_source`）
 
+## 实体引用格式
+
+写入的实体引用使用小写、带连字符的规范 UUID，例如 `018f4d3a-2b1c-7def-8a90-123456789abc`。此规则适用于结构归属、`subjects[].work_id`、`contents[].expression_id`、关系端点，以及 definitions 声明为 `entity` 的属性（含嵌套 group/list）。大写、无连字符、括号包裹、`urn:uuid:` 前缀或额外空白会返回 `400 invalid_reference`。
+
+旧库存中的动态属性引用由 `000023_reference_canonicalization` 一次性迁移规范化；客户端不能依赖写入时自动转换旧格式。`external_ids` 是外部权威库编号，按各库规则校验，不套用目录实体引用规则。
+
 ## 创建实体
 
 ```http
@@ -128,6 +134,8 @@ PUT 是整实体替换，不是局部 PATCH：先 `GET /api/catalog/entities/:id
 改完再整体写回。翻译、标签、`contents` 都可能整组替换。
 :::
 
+Track 整体写入时，每条 `contents[].sources` 未提供或为 `null` 都会继承本次编辑的顶层 `sources`，即使该收录的其他字段未改变。要保留既有逐条证据，须将回读的 `contents[].sources` 数组显式带回；服务端不会按旧条目自动补回。
+
 - `expected_version` 与当前版本不一致返回 `409 version_conflict`：重读后再写，不要盲目重试
 - 发布就是 PUT 写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`
 - `deleted` / `merged` 走生命周期端点；PUT 提交这两个状态返回 `400 use_lifecycle_endpoint`
@@ -154,7 +162,7 @@ DELETE /api/catalog/tracks/:id/contents/:position # 删除，仍须请求体
 }
 ```
 
-inclusion.sources 可独立填写；省略时新/改变的收录使用本次编辑来源。替换的 inclusion.position 可以不同于 URL 中旧位置。删除只带 expected_version/edit_note/sources。每次成功产生 Track 修订；409 后回读再合并，不盲重放。未改变的收录保留原证据；不存在的历史来源不会自动补造。
+`inclusion.sources` 可独立填写；省略或为 `null` 时，增加或替换的收录使用本次编辑的顶层 `sources`。替换的 `inclusion.position` 可以不同于 URL 中旧位置。删除只带 `expected_version` / `edit_note` / `sources`。每次成功产生 Track 修订；409 后回读再合并，不盲重放。未被本次单条操作替换的收录保留已保存证据；整实体 PUT 则遵循上节的逐条证据规则。
 
 ## 关系
 
