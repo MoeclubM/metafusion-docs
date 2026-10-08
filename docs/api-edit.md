@@ -14,6 +14,7 @@ group: "api"
 | 实体 | `/api/catalog/entities` |
 | 关系 | `/api/catalog/relations` |
 | 单条 Track 收录 | `/api/catalog/tracks/:id/contents` 与 `/:position` |
+| Track 状态 | `PATCH /api/catalog/tracks/:id/status` |
 | 合并 / 退役 | `/api/catalog/entities/:id/lifecycle` |
 | 下架（`published → draft`） | `/api/catalog/entities/:id/unpublish` |
 
@@ -127,9 +128,25 @@ PUT 是整实体替换，不是局部 PATCH：先 `GET /api/catalog/entities/:id
 Track 整体写入时，每条 `contents[].sources` 未提供或为 `null` 都会继承本次编辑的顶层 `sources`，即使该收录的其他字段未改变。要保留既有逐条证据，须将回读的 `contents[].sources` 数组显式带回；服务端不会按旧条目自动补回。
 
 - `expected_version` 与当前版本不一致返回 `409 version_conflict`：重读后再写，不要盲目重试
-- 发布就是 PUT 写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`
+- 发布时写 `status: "published"`，至少带一条 `translations`，否则 `400 translation_required`；Track 仅改状态使用下面的专用 PATCH
 - `deleted` / `merged` 走生命周期端点；PUT 提交这两个状态返回 `400 use_lifecycle_endpoint`
 - 已发布条目改回 `draft` 走下架端点 `POST /api/catalog/entities/:id/unpublish`（见下「下架」）；PUT 提交降级仍然返回 `400 use_lifecycle_endpoint`——降级只有这一条通道
+
+### Track 状态
+
+仅改 Track 状态时使用专用端点，避免把按可见性裁剪过的 `contents` 整体写回。先确认目标实例 OpenAPI 已声明此端点，再取当前版本：
+
+```http
+PATCH /api/catalog/tracks/:id/status
+{
+  "status": "published",
+  "expected_version": 1,
+  "edit_note": "依据官方曲目表发布；本次仅将 status 由 draft 置为 published",
+  "sources": [{"kind": "url", "citation": "官方曲目表支持 status；本次仅将 status 由 draft 置为 published", "url": "https://example.com/tracklist"}]
+}
+```
+
+只接受上述四个键，`status` 为 `draft` / `pending_review` / `published`；传题名、属性、`contents` 或其它键返回 `400 invalid_payload`。权限及发布引用检查与实体编辑一致，`expected_version` 冲突返回 `409 version_conflict`。成功只改变状态、版本和更新时间，保留原有收录、逐条来源及其它字段，并写入修订、审计和 outbox；响应仍按当前可见性裁剪。`published` 降级及 `deleted` / `merged` 仍须使用生命周期专用入口。
 
 ### 单条收录
 
