@@ -41,7 +41,7 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `page` | 从 1 起，等价 offset=(page-1)×limit，不能与 offset 同时提交 |
 | `cursor` | 仅用于关键词深分页，不能与 offset/page 同时提交；见[检索](/api-search) |
 
-无关键词浏览响应为 `{ "items": [...], "total": <数据库计数> }`。关键词查询还返回索引计数口径与深分页标记，见[检索](/api-search)。
+无关键词浏览响应含 `items`、数据库计数 `total`、`total_relation="eq"` 和 `has_more`。关键词查询的索引计数与深分页标记见[检索](/api-search)。
 
 无关键词浏览默认按 `updated_at DESC, id`；带 `content_unit_id` / `release_id` / `medium_id` / `parent_id` 且未显式排序时改按 `position` 升序，
 便于直接渲染分碟与曲目顺序（`work_id` 不触发该排序，仍是默认序）。
@@ -98,16 +98,13 @@ GET /api/catalog/entities/:id/occurrences # 该实体被哪些发行版收录
 GET /api/catalog/entities/:id/revisions  # 修订历史
 ```
 
-```bash
-curl "/api/catalog/entities/<id>" -H "User-Agent: MyApp/1.0 (you@example.com)" | jq .
-curl "/api/catalog/entities/<id>/relations" -H "User-Agent: MyApp/1.0 (you@example.com)" | jq .
-```
-
 - `/relations` 的响应是 `{ items, entities, subject_id }`：`items` 是关系边，`entities` 是按 id 索引的两端实体（含被查询实体自身），`subject_id` 标出「哪个是自己」
 - 客户端据此直接渲染「谁→谁」，不必再逐条取实体
 - `/occurrences` 按 kind 收敛：`expression` 返回自身收录，`content_unit` / `work` 返回其表达被收录的情况
 - `/revisions` 按目标实体逐行过滤可见性；Track 历史快照中的收录也按表达当前可见性裁剪，原始事实仍保留在库中。关系修订的 `target_id` 是关系 id 本身
 - `/links` 是固定结构与语义关系的统一只读投影；语义关系仍经 `/relations` 写入，不复制结构边。
+
+实体详情包含当前 version，但不是全库事实的无损导出。Track 的 contents 会过滤当前不可见的 Expression；编辑时不要把可见性裁剪后的结果整实体 PUT，以免误删历史引用。维护单条收录时可用[单条收录接口](/api-edit#单条收录)，整实体编辑须先确认有权读取和保留全部收录。
 
 ### 身份解析和统一关系读取
 
@@ -158,18 +155,16 @@ Content-Type: application/json
 
 - `definition_etag`：本次读取的定义版本。
 - `pages`：按可见主体的请求顺序返回 `{subject_id, items, limit, offset, has_more}`；每个主体独立分页。
-- `entities`：去重的可见端点摘要，只有id、kind、version、title、original_language和translations；不能当作完整实体写回。
-- `unavailable_ids`：不存在或当前不可见的请求ID，两者不区分。
+- `entities`：去重的可见端点摘要，只有 `id`、`kind`、`version`、`title`、`original_language` 和 `translations`；不能当作完整实体写回。
+- `unavailable_ids`：不存在或当前不可见的请求 ID，两者不区分。
 
 items 沿用 links 的边形状，事实方向始终为 `source_id → target_id`；direction 标明相对主体的方向，反向名称不反转事实。references 包含非端点实体引用，via 标记当前主体匹配的上下文路径；它们不能只靠 source_id / target_id 推断。
 
-单次请求的定义、主体与各页在一个一致性只读快照中读取；继续分页是新的快照。某页 `has_more=true` 时，可用该主体和相同筛选继续请求，offset增加本页limit。接口只读一跳，不自动展开全图；多页或多跳未完成时不能将结果称为全集。
+单次请求的定义、主体与各页在一个一致性只读快照中读取；继续分页是新的快照。某页 `has_more=true` 时，用该主体和相同筛选继续请求，offset 增加本页 limit。接口只读一跳，不自动展开全图；多页或多跳未完成时不能将结果称为全集。
 
 需要递归时，将本页端点及 references 中的可见实体 ID 加入待查队列，去重后每批最多 20 个主体。分别完成每个主体的 has_more 分页，再扩展下一跳；记录 definition_etag、已读页和 unavailable_ids。每次分页是新快照，数据变更时需重新核对范围。这里只能查询已声明的目录事实，外围文件、收藏或普通文本不会被自动推断为目录关系。
 
-例如，Expression向内筛选Track可查询实际收录位置，再沿Track的Medium和Release归属追踪发行；Work的release_subject只证明发行声明了该作品，不能证明某个录音被收录。Release向外筛选Medium可查询介质，完整曲序仍可用发行toc。参数错误返回400；数据库或网络失败使查询失败，不返回伪空结果。默认限流60次/分钟，按当前账户、组策略计算；429需遵循Retry-After。
-
-Track 的公开读取会过滤不可见表达的收录；普通编辑者整实体 PUT 删除或改写被过滤的历史引用会返回 403 forbidden，需有权查看完整事实的创建者或审核者处理。不要把裁剪后的公开视图直接当作完整备份。
+例如，Expression 向内筛选 Track 可查询实际收录位置，再沿 Track 的 Medium 和 Release 归属追踪发行；Work 的 `release_subject` 只证明发行声明了该作品，不能证明某个录音被收录。Release 向外筛选 Medium 可查询介质，完整曲序可用发行 toc。失败与限流处理见[API 概览](/api-overview)。
 
 ## 发行目录、组成与版本组
 
@@ -223,7 +218,7 @@ GET /api/users/:id/contributions?tab=all&page=1&page_size=20
 | 参数 | 说明 |
 |---|---|
 | `tab` | `all` / `revisions` / `works` / `releases` / `artists`；其余取值 `400 invalid_tab` |
-| `page` / `page_size` | `page` 从 1 起、`page_size` 默认 20 上限 100，越界静默收敛（不报错），与其它列表接口同一风格 |
+| `page` / `page_size` | `page` 小于 1 时取 1；`page_size` 默认 20，超出 1–100 时取 20，不报错；与实体列表的严格分页校验不同 |
 
 各 tab 的口径：
 
@@ -242,11 +237,7 @@ GET /api/users/:id/contributions?tab=all&page=1&page_size=20
 | `revisions_count` | 该用户在可见实体上的全部修订行数（含首次创建行） |
 | `audit_actions` | 该用户执行过的生命周期管理动作次数（`entity.deleted` / `entity.merged`） |
 
-三个 created 计数即 version=1 的首次修订条数，且该实体当前对请求方可见。
-
-::: warning 注意
-`audit_actions` 不随目标当前状态变化：删除与合并会把目标移出可见集，若也套可见性过滤这个数字恒为 0。
-:::
+三个 created 计数只包含当前对请求方可见的实体；`audit_actions` 不随目标当前状态变化。
 
 `items` 有两种项，字段沿用既有端点：
 
@@ -257,28 +248,7 @@ GET /api/users/:id/contributions?tab=all&page=1&page_size=20
 
 可见性与实体列表同一口径：未发布只对创建者与持 `catalog.lifecycle.manage` 者可见，`deleted` / `merged` 对所有人不可见。因此列表与统计都不会泄漏草稿。
 
-贡献归属取自修订行的 actor 快照列，不 JOIN 账号表：目录服务不判断"用户是否存在"（没有任何修订就是零贡献），也不返回昵称与头像（那些字段见 [认证与凭证](/api-auth) 的公开账号资料）。
-
-错误码：
-
-- `:id` 不是 UUID 是 `404 not_found`
-- `tab` 非法是 `400 invalid_tab`
-- 本路由限流 120 / 分钟，超限 `429 rate_limited` 并带 `Retry-After`
-
-::: warning 注意
-「账号不存在」与「有这个人但一条贡献都没有」分不出来：账号表归账号服务、目录不查它，
-两者都是 `200` 加空列表与 0 计数。`404` 只留给「这个 id 不是 UUID」。
-:::
-
-::: details 备注
-`404` 口径与账号 `GET /api/users/:id`、互动 `GET /api/users/:id/stats` 一致：
-用户主页把三路数据源按同一类降级处理，回 `400` 会把「这个来源取不到」讲成「参数错误」。
-:::
-
-## 分页
-
-- 实体列表 limit 默认 50、范围 1–100，offset 非负；非法值返回 400，page 与 offset 互斥。
-- 无关键词浏览使用数据库 `total` 和 `limit` / `offset`；关键词深分页见[检索](/api-search)。
+贡献响应不判断账号是否存在，也不返回昵称、头像等账号资料：合法 UUID 没有贡献时返回 200、空列表和零计数，不能据此推断账号存在。公开资料见[认证与凭证](/api-auth#公开账号资料)。非法 UUID 返回 `404 not_found`，非法 tab 返回 `400 invalid_tab`；限流见[API 概览](/api-overview#限流)。
 
 ## 相关页面
 

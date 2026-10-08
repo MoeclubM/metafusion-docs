@@ -41,7 +41,7 @@ MetaFusion 使用统一的 `/api` 入口。实体种类通过 `kind` 区分，�
 | 要完成的任务 | 端点 | 详细契约 |
 | --- | --- | --- |
 | 查找与筛选实体 | `GET /api/catalog/entities` | [实体查询与详情](/api-entities)、[检索](/api-search) |
-| 获取可编辑完整实体 | `GET /api/catalog/entities/:id` | [实体查询与详情](/api-entities) |
+| 获取实体详情与当前版本 | `GET /api/catalog/entities/:id` | [实体查询与详情](/api-entities) |
 | 跟随合并与批量解析身份 | `GET .../:id/identity`、`POST /api/catalog/entities/identity` | [实体查询与详情](/api-entities) |
 | 遍历可见的直接关系与属性引用 | `GET .../:id/links`、`POST /api/catalog/relationships/query` | [实体查询与详情](/api-entities) |
 | 读取语义关系与实际收录 | `GET .../:id/relations`、`.../:id/occurrences` | [实体查询与详情](/api-entities) |
@@ -76,7 +76,7 @@ MetaFusion 使用统一的 `/api` 入口。实体种类通过 `kind` 区分，�
 
 统一关系查询逐主体分页。只有完成所有页、没有不可用主体并处理定义变化后，才能声明对应可见范围的直接关系已读完。递归图谱需要调用方维护待查队列与已访问集合。
 
-关系摘要只能用于展示和继续查询；编辑前重新获取完整实体及当前 version。
+关系摘要只能用于展示和继续查询；编辑前重新获取实体详情及当前 version。详情也可能裁剪不可见引用，尤其是 Track 的 contents；回读成功不代表可以无损整实体写回，见[实体详情](/api-entities#实体详情)。
 
 ## 限流
 

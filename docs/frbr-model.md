@@ -65,7 +65,7 @@ Release 没有 `work_id`，通过 `subjects[]` 声明收录了哪些作品：
 {"work_id": "<work_uuid>", "role": "primary", "position": 0, "attributes": {}}
 ```
 
-`role` 使用当前允许值，固定入口接受 `primary`、`compilation`、`supplement`。同一作品同一角色只保留一项。
+`role` 使用 definitions 中 `release_role` 词表的当前启用词项；`primary`、`compilation`、`supplement` 是种子示例，不是封闭枚举。同一作品同一角色只保留一项。
 
 Track 的 `contents[]` 是实际收录的权威来源：
 

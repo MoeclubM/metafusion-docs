@@ -18,9 +18,9 @@ group: "api"
 `Authorization: Bearer <token>` 或 HttpOnly Cookie `mf_session`。
 其余读接口允许匿名，但只返回对调用者可见的内容，不可读一律 404。
 
-`initiate` / `complete` / `upload/stream` / `bind` 另外要求权限码 `storage.asset.upload`，缺码返回 `403 forbidden`（未登录仍是 `401 authentication_required`）。`member` 组默认持有该码，所以"登录即可上传"在默认配置下不变；实例要收紧上传时，从该组权限里移除它即可。
+`initiate` / `complete` / `upload/stream` / `bind` 另外要求 `storage.asset.upload`，缺码返回 `403 forbidden`（未登录为 `401 authentication_required`）。可用权限以账号现时权限和凭证 scopes 为准。
 
-`unbind` 不需要该码：它只能删自己的绑定（所有权在服务内判定）。
+`unbind` 不要求上传权限：绑定创建者、文件上传者或持 `storage.asset.moderate` 的审核者可以解绑。
 
 两个存储权限码的分工：
 
@@ -29,9 +29,11 @@ group: "api"
 | `storage.asset.upload` | 创建并登记自己的东西 |
 | `storage.asset.moderate` | 处置他人的东西：续传/覆盖他人未完成的上传、完成或绑定他人资产、读全局 `/stats` |
 
-两者互不蕴含：只有审核权的人不能替别人创建资产，只有上传权的人也不能动他人的资产。
+两者互不蕴含：创建资产仍需上传权限，管理他人资产还需审核权限。可读已有文件不代表可以为它新建绑定。
 
 ## 初始化（秒传检测）
+
+下列请求与响应展示形状，哈希、大小、地址和 ID 为示例值。实际上传须计算本地文件的 SHA-256，使用真实字节数。
 
 ```http
 POST /api/storage/upload/initiate
@@ -40,7 +42,7 @@ Content-Type: application/json
 
 {
   "file_name": "track.flac",
-  "file_size": 12345678,
+  "file_size": 18874368,
   "sha256_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "mime_type": "audio/flac",
   "part_count": 3,
@@ -66,30 +68,34 @@ Content-Type: application/json
   "asset_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
   "object_key": "objects/e3/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/track.flac",
   "upload_id": "VXBsb2FkIElE…",
-  "presigned_urls": ["https://<对象存储对外地址>/metafusion-master/objects/…?partNumber=1&uploadId=…"],
-  "part_size_hint": 4115226,
+  "presigned_urls": [
+    "https://<对象存储对外地址>/metafusion-master/objects/…?partNumber=1&uploadId=…",
+    "https://<对象存储对外地址>/metafusion-master/objects/…?partNumber=2&uploadId=…",
+    "https://<对象存储对外地址>/metafusion-master/objects/…?partNumber=3&uploadId=…"
+  ],
+  "part_size_hint": 6291456,
   "expires_at": "2026-09-15T10:00:00Z"
 }
 ```
 
-- `is_instant_upload: true`：库中已有同一 SHA-256 且服务端验过内容（`hash_verified=true`）的资产，无需再上传
-- 请求带了 `target_entity_id` 时服务端会顺手建好绑定，响应里带 `asset` 与 `binding`
-- 命中同一 SHA-256 但尚未验证（上传中，或 complete 校验失败过）不算秒传，按"没有这份内容"继续正常上传
+- `is_instant_upload: true`：已有同一 SHA-256、服务端已验证且当前可读的资产，无需再上传。摘要本身不授予读取权限；不可读的既有资产返回 404
+- 新建资产时可同时按 `target_entity_id` 建绑定；秒传复用时新增绑定仍须为上传者本人或持审核权限，其他可读者传目标会返回 403
+- 同一 SHA-256 的未完成资产不算秒传，上传者可续传；不会另建重复资产
 - 未配置对象存储端点时是本地对象模式：不返回预签名地址，而是给出 `direct_upload_url`，客户端把原始字节 `PUT` 到该地址即可（服务端边收边算 SHA-256 并校验）
 
 ::: warning 注意
 同一 SHA-256 的未完成上传由上传者本人续传（复用同一次分片会话），他人重传得到 `409 upload_in_progress`；
-持 `storage.asset.moderate` 的审核者可接手。否则一次失败上传会把该 SHA-256 永久占死。
+持 `storage.asset.moderate` 的审核者可接手。续传会刷新上传租约；过期未完成资产可能被回收，重新初始化时以响应中的 asset_id 和上传地址为准。
 :::
 
 ## 直传分片（浏览器/客户端 → 对象存储）
 
 ```bash
 # 各分片直接 PUT 到预签名地址，完成后从响应头 ETag 取值回传
-curl -X PUT "<presigned_url_1>" --data-binary @part_1.bin
+curl --fail-with-body -D part_1.headers -X PUT "<presigned_url_1>" --data-binary @part_1.bin
 ```
 
-分片不经过业务服务器，也不消耗业务 API 带宽。
+按 part_size_hint 切分文件，对全部分片重复上传并保存各自响应头里的 ETag。S3 分片除最后一片外通常须至少 5 MiB；本例为 18 MiB 文件的三个 6 MiB 分片。预签名直传不携带 MetaFusion Bearer 或 Cookie；若签名约束了 Content-Type，按初始化 MIME 设置该请求头。
 
 ::: warning 注意
 预签名 URL 的 host 参与签名，因此对象存储必须从客户端可达：编排里对象存储端口默认不对宿主机开放，
@@ -108,7 +114,8 @@ Content-Type: application/json
   "upload_id": "VXBsb2FkIElE…",
   "parts": [
     { "part_number": 1, "etag": "\"etag-from-part1\"" },
-    { "part_number": 2, "etag": "\"etag-from-part2\"" }
+    { "part_number": 2, "etag": "\"etag-from-part2\"" },
+    { "part_number": 3, "etag": "\"etag-from-part3\"" }
   ]
 }
 ```
@@ -120,7 +127,7 @@ Content-Type: application/json
 - 不一致返回 `409 hash_mismatch`，资产留在 `pending`（`fail_reason=hash_mismatch`），并删除对不上声明的对象键，绝不发布
 - 读回受两个部署上限约束：对象超过 `STORAGE_VERIFY_MAX_MB` 返回 `413 hash_verify_too_large`，读回超过 `STORAGE_VERIFY_TIMEOUT_SECONDS` 返回 `408 verify_timeout`；两者同样令资产留在 `pending`
 - 声明的 `file_size` 就已超限时不再合并，直接失败，避免留下必然发布不了的碎片
-- 这两个上限默认都不限制（大文件优先），代价是对象越大越可能撞上限
+- 这两个上限默认不限制；实例可以收紧，客户端仍须为大文件校验预留时间
 - 读回阶段的其它失败（客户端断开、对象存储不可用）返回 `503 storage_unavailable`
 
 成功响应仍是 `{"asset": {…}}`：资产已置 `complete`、`hash_verified=true` 且 `size_bytes` 用实际读回字节数。
@@ -130,10 +137,7 @@ Content-Type: application/json
 
 本地对象模式下内容已在 `PUT /api/storage/upload/stream/{asset_id}` 边收边算并校验（摘要不符在那里就返回 `409 hash_mismatch`），complete 只做幂等确认。
 
-::: tip 大文件优先的做法
-走服务端流式 `PUT /api/storage/upload/stream/{asset_id}`（边收边算，没有二次回读成本），
-或分片上传并在 complete 前用 `POST /api/storage/verify-hash`（带 `asset_id`）先自检一次，提前发现内容不符。
-:::
+大文件可选择分片直传，或使用服务端流式 `PUT /api/storage/upload/stream/{asset_id}` 边收边校验。后者经过业务服务器；按 asset 调用 `verify-hash` 仍需读取整份对象，不替代 complete，也不应作为每次上传的必需步骤。
 
 ::: warning 职责边界：原始文件
 存储服务收原始文件、按权限分发原始文件。HLS 切片、预览音频、波形图、雪碧图由客户端拿原档自行处理。
@@ -174,8 +178,7 @@ DELETE /api/storage/bindings/{binding_id}
 
 资产与绑定清单只允许持 `storage.asset.moderate` 的账号访问；两者的 `limit` 范围是 1–100（默认 50），`offset` 从 0 起，响应含 `has_more`。资产清单的 `status` 可为 `complete` 或 `pending`，`name` 最多 100 字符；清单只提供元数据，内容预览仍走 `/assets/{id}/content` 并逐次鉴权。
 
-`/api/storage/assets/{id}/content` 的补充说明：对象存储模式下预签名地址的主机对浏览器不可达且会过期，
-目录侧引用外部图片时改用本端点（原样下发，不转码；按请求判可见性，只进私有缓存）。
+长期引用文件使用 `/api/storage/assets/{id}/content`：原样下发，不转码，按每次请求判定可见性并使用私有缓存。预签名下载地址会过期，不用于长期封面。
 
 `verify-hash` 的两种分支：
 
@@ -187,20 +190,30 @@ DELETE /api/storage/bindings/{binding_id}
 GET /api/storage/download/{asset_id}
 
 → { "asset_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d", "download_url": "https://…?X-Amz-Signature=…&response-content-disposition=attachment%3B%20filename%3D…",
-    "file_name": "track.flac", "size_bytes": 12345678, "sha256": "…", "expires_at": "…" }
+    "file_name": "track.flac", "size_bytes": 18874368, "sha256": "…", "expires_at": "…" }
 ```
 
 ::: warning 注意
 读取可见性只有一条口径：上传者本人或审核者（持 `storage.asset.moderate`）直通，
-其余人在资产已 `complete` 时只要任一绑定目标实体可见即可读。
+其余人仅在资产已 `complete`、未被禁发且任一绑定目标实体可见时可读。
 :::
 
-下载、元数据读取与哈希校验共用该判定，同一份文件在各接口的可见性一致。
-无可见性时统一返回 404（各原因同码），避免泄露他人上传的存在性。
+下载、元数据读取与哈希校验共用该判定；下载与内容入口还要求资产已完成。已签发的预签名 URL 在有效期内可能继续访问，解绑或禁发不会撤销对象存储签名；需要逐请求鉴权时使用 content 入口。
+不可读返回 404，不泄露他人上传的存在性；目录依赖不可用返回 `503 upstream_unavailable`，不能解释为文件不存在。
+
+## 上传失败与恢复
+
+| HTTP / error | 处理 |
+| --- | --- |
+| 409 upload_in_progress | 同摘要已有他人的未完成上传，请审核者处理，不重复创建 |
+| 413 quota_exceeded | 账号或站点容量不足，停止新增上传并检查额度 |
+| 429 too_many_uploads | 并发上传额度已满，等现有任务完成或租约回收后再初始化 |
+| 409 hash_mismatch / size_mismatch | 核对文件、声明大小和摘要；回读资产状态后重新上传正确内容 |
+| 413 hash_verify_too_large / 408 verify_timeout | 超过实例校验限制，核对限制或改用适用的上传方式 |
+| 503 storage_unavailable / upstream_unavailable | 对象存储或目录依赖故障，暂停后续绑定与完成，恢复后先回读 |
 
 ## 限流与审计
 
-- 上传与下载经网关转发；网关按 IP 对 `/api/` 限流（令牌桶 `30 r/s`），`/api/storage/` 的突发额度放宽到 `burst 100`
-- 限流按请求数计、与字节数无关，而分片上传天然是多请求，放宽突发额度是为了不掐正常分片
-- 超限由网关直接返回 `429`；网关这一层的 429 不带 `Retry-After`（只有目录服务自身的路由级限流才带该头）
-- 目录侧的写入审计按编目流程记录；存储服务的操作审计口径以目标实例响应为准
+网关对业务 API 按 IP 与请求数限流；预签名分片直传由对象存储入口处理。网关 429 可能没有 `Retry-After`，此时采用退避，完整额度说明见[API 概览](/api-overview#限流)。
+
+初始化、流式上传、完成、绑定、解绑及禁发治理由存储服务记录操作审计。部署参数与清理策略见[存储运行约定](https://github.com/MoeclubM/MetaFusion/blob/main/docs/architecture/storage-operations.md)，客户端以目标实例响应确认能力。

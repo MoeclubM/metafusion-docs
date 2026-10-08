@@ -9,21 +9,17 @@ group: "api"
 
 认证由账号服务（`metafusion-auth`）负责。它签发两种令牌：RS256 访问令牌，以及个人访问令牌（PAT，明文前缀 `mfp_`）。
 
-目录、互动、存储三个服务只验签、不签发。PAT 交回账号服务的内省端点判定，三个服务用同一份契约（见下文）。
-
-::: warning 没有 `X-API-Key` 认证方式
-scope 也不是 `catalog:write` 这类读写词表——PAT 的 scopes 就是权限码本身。
-:::
+目录、互动、存储验证访问令牌或向账号服务内省 PAT。认证使用 Bearer 或会话 Cookie，没有 `X-API-Key`；PAT scopes 使用权限码。
 
 ## 三种凭证
 
 | 凭证 | 获取方式 | 有效期 | 用途 |
 |---|---|---|---|
 | 会话令牌 / Cookie | `POST /api/auth/login`（或 `/api/auth/register`） | 访问令牌 15 分钟，服务端会话兜底 24 小时 | 网页端与直接调用 API |
-| OAuth 2.0 授权码 | `/api/oauth/authorize` + `POST /api/oauth/token` | 由客户端配置决定；无 `refresh_token`，到期重新授权 | 第三方站点与 OIDC 接入 |
+| OAuth 2.0 访问令牌 | 授权码经 `POST /api/oauth/token` 兑换 | 以换码响应的 `expires_in` 为准；无 `refresh_token`，到期重新授权 | 第三方站点与 OIDC 接入 |
 | 个人访问令牌（PAT） | 登录后在设置页自助创建（`POST /api/auth/tokens`） | 创建时可选到期时间，最长 10 年；不填即永不过期 | 外部应用、Agent、CI 的长期机器接入 |
 
-会话令牌与 OAuth 访问令牌都可用请求头或 Cookie 携带，服务端两者各试一次；PAT **只走请求头**：
+API 使用 Bearer 访问令牌；网页会话也可通过 `mf_session` Cookie 携带。PAT 只走请求头：
 
 ```http
 Authorization: Bearer <token>      # 会话令牌 / OAuth 访问令牌 / PAT（mfp_ 前缀）
@@ -34,7 +30,7 @@ Cookie: mf_session=<token>         # 会话令牌
 
 ## 个人访问令牌（PAT）
 
-外部应用、Agent 与 CI 的长期机器接入凭证，由账号服务签发，下游服务拿它去账号服务的内省端点判定：
+登录后管理本人的机器接入凭证：
 
 ```http
 GET    /api/auth/tokens                  # 需登录：列出本人的令牌（含已吊销的，带 active=false）
@@ -45,12 +41,7 @@ POST   /api/auth/tokens/introspect       # 下游服务内部调用，不是给�
 
 ### 明文与存储
 
-- 明文是 `mfp_` 前缀 + 43 个 base62 字符（32 字节随机数），只在创建响应的 `token` 字段里出现一次。
-- 库里只存 SHA-256 与展示前缀 `token_prefix`。
-
-::: warning 明文之后任何路径都取不回
-丢了只能吊销重建。
-:::
+明文是 `mfp_` 前缀 + 43 个 base62 字符，只在创建响应的 `token` 字段出现一次；元数据在 `item` 中。列表用 `token_prefix`（前 12 字符）指认令牌，不返回明文或哈希。丢失后只能吊销重建。
 
 ### 创建与 scopes
 
@@ -59,26 +50,22 @@ POST   /api/auth/tokens/introspect       # 下游服务内部调用，不是给�
 - `name` 必填（≤64 字，不必唯一）。
 - `expires_in_days` 省略或为 0 表示永不过期；负数或超过 3650（10 年）返回 `400 invalid_expiry`。
 - `scopes` 是权限码（`catalog.entity.edit` 这类），不是 `read` / `write` 词表。
-- 每个码必须是合法权限码、且创建者自己当前持有。超出本人权限的码直接拒绝（`scope_not_granted: <code>`），不静默取交集——否则用户会拿到一张比他要的更弱的令牌却不知情。
+- 每个码须格式合法且创建者当前持有；超出本人权限返回 `scope_not_granted: <code>`，不会静默取交集。
 - 非法码返回 `invalid_scope: <code>`；重复项去重并保持请求顺序。
-- 空数组 `[]` 是合法语义，等于「仅身份、零权限」。
-
-::: warning 空 scopes 不会回落到角色兜底
-空 scopes 的令牌能通过「需登录」的读接口，但任何权限码闸门都返回 `403`——管理员持空 scopes 的令牌同样只剩身份。
-:::
+- scopes 必须非空；省略、空数组或去除空白后为空，返回 `invalid_scope: empty`。
 
 ### 有效权限与限额
 
-- 实际权限 = 账号现时权限 ∩ 令牌 scopes，由内省每次重新计算：账号权限被收回后，令牌的有效权限随之变窄。
+- 实际权限 = 账号现时权限 ∩ 令牌 scopes，由内省重新计算。交集可以为空：此时令牌仍标识账号，但不能通过任何权限码闸门；没有角色兜底。
 - 每个账号未吊销的令牌最多 10 张，超出返回 `token_limit_reached`（已吊销的不占额度）。
 
 ### 到期与吊销
 
-- `DELETE /api/auth/tokens/{id}` 只写 `revoked_at`、不删行（列表里仍能看到它已失效），幂等。
+- `DELETE /api/auth/tokens/{id}` 幂等吊销，列表仍保留该令牌并标为 `active=false`。
 - 别人的或不存在的一律 `token_not_found`——两种情况不区分，避免探测。
 
 ::: warning 吊销不是立即生效
-下游服务把内省结果进程内缓存 60 秒，所以吊销、到期与权限收回在下游侧最长 60 秒后才生效（三个服务用的是同一个 60 秒窗口）。不要按「立即失效」设计自动化流程；账号被封禁后，既有 PAT 同样要等下一个窗口。
+下游服务缓存内省结果至多 60 秒，吊销、权限收回与封禁可能延迟至下一次内省才生效。缓存不会超过令牌自身的 `expires_at`，到期不会因缓存而延长。
 :::
 
 ### 使用方式与错误码
@@ -89,15 +76,13 @@ Authorization: Bearer mfp_…
 
 - 只支持 `Authorization: Bearer`，没有 `X-API-Key` 认证方式。
 - 带 `mfp_` 前缀的 Bearer 以它为准，不会回落到 Cookie：浏览器里同时存在别人的 `mf_session` 也不会被当成身份，PAT 请求不写任何 Cookie。
-- 无效、已吊销、已过期、账号被封禁一律 `401 {"error":"invalid_token"}`，不细分原因（细分会变成枚举探测口）。
-- 形态明显非法（前缀后的长度或字符集不在契约窗口内）在本地直接 401，不会去问账号服务。
-- 账号服务不可达、或该服务没配置 `AUTH_URL` → `503 {"error":"auth_unavailable"}`。这是依赖故障，重试才对，不要当成「凭据无效」去换令牌；依赖故障的结论不缓存，账号服务恢复后立刻可用。
-- `token_prefix`（明文前 12 字符）用于在列表里指认「这是哪一张」，不足以反推明文。
-- PAT 不能调 `/api/auth/*`：它是机器接入凭据、不是登录态，拿 PAT 打自助端点会 `401 authentication_required`。所以「PAT 不能再创建 PAT」是成立的——自助创建 / 列出 / 吊销只能用会话令牌。
+- 无效、已吊销、已过期或账号被封禁返回 `401 {"error":"invalid_token"}`，不区分原因；形态非法时在下游直接拒绝。
+- 账号服务不可达或未配置返回 `503 {"error":"auth_unavailable"}`。这是依赖故障，结论不缓存；等待恢复，不要当成凭据无效而换令牌。
+- PAT 不能用于 `/api/auth/*` 的自助会话端点，返回 `401 authentication_required`；创建、列出和吊销 PAT 使用会话令牌。
 
 ### 覆盖面
 
-PAT 是下游服务各自内省的，三个服务用的是同一份契约（前缀、60 秒缓存窗口、`401 invalid_token` / `503 auth_unavailable` 一致）：
+PAT 可用于下游服务，仍受账号现时权限与 scopes 限制：
 
 - 目录：`/api/` 的兜底前缀，含 `/api/catalog/*`、`/api/importer/*`、`/api/exchange/*`
 - 互动：`/api/community/*` 等
@@ -108,7 +93,7 @@ PAT 是下游服务各自内省的，三个服务用的是同一份契约（前�
 - 明文只显示一次：立刻存进环境变量或密钥管理器，不要粘贴进聊天、Issue、配置文件或提交历史。泄漏时第一步是吊销（在设置页，或 `DELETE /api/auth/tokens/{id}`）。
 - scopes 取最小必要：一张令牌只给一个用途需要的权限码。给 CI 与本地脚本各建一张，便于单独吊销。
 - 长期令牌不会自动过期：给外部集成设一个到期时间并定期轮换。
-- 下游服务不把明文或哈希写进日志与错误信息（哈希只作进程内缓存键）；排障时用 `token_prefix` 指认令牌。
+- 排障时用 `token_prefix` 指认令牌，不记录明文或哈希。
 
 ## 注册与实例准入
 
@@ -165,10 +150,10 @@ PUT  /api/auth/password          # 改密码：{ old_password, new_password }
 
 没有 `refresh_token` 字段：续期走 `POST /api/auth/refresh`。
 
-服务端会话是 `auth.sessions` 里的行（24 小时）。登出、全部登出、改密都会直接删行——访问令牌过期后回退查库，看的就是这一行，所以这一层在多实例下天然一致。
+服务端会话有效期为 24 小时。登出、全部登出与改密会移除相应会话；下游已签发 JWT 的撤销窗口见[账号封禁](#账号封禁)。
 
 ::: warning 令牌注销集合是单实例实现
-另有一份进程内的令牌注销集合（jti），用于让尚未过期的无状态 JWT 立即失效。它是单实例实现，横向扩容时这一份需要换成 Redis 之类的共享状态。
+账号服务对尚未过期 JWT 的注销记录在进程内，不是跨实例共享；集成不能假定所有服务上的既有 JWT 都会立即失效。
 :::
 
 ## 第三方授权管理（自助撤回）
@@ -180,11 +165,11 @@ DELETE /api/auth/oauth-grants/{client_id}      # 需登录：撤回我对该应�
 
 `GET` 返回 `items[]`，每项含 `client_id`、`name`、`scopes`、`active`、`last_authorized_at`、`expires_at`。
 
-`active` 表示当前还有未过期的令牌。授权过但令牌已过期的应用也会列出（时间来自同意审计），所以列表是「我给过哪些授权」的全貌，不只是「当前生效的」。
+`active` 表示当前还有未过期的令牌；历史授权也会列出。
 
-`DELETE` 删除**本人**在该应用下的未过期令牌与未兑换授权码，返回 `{"ok":true,"revoked":N}`。本来就没有有效令牌时 `revoked` 为 0，但请求仍然是成功的（幂等）。撤回后该应用在列表里转为 `active:false`（同意记录仍在）。
+`DELETE` 撤回本人在该应用下的未过期令牌与未兑换授权码，返回 `{"ok":true,"revoked":N}`。幂等；没有有效令牌时 N 为 0，历史授权记录仍保留。
 
-这两个端点只认当前登录身份、路径里没有别人的 user id，因此任何登录用户都能收回自己的授权。管理面的按客户端 / 按用户吊销（`/api/admin/oauth/clients/{id}/revoke-tokens`、`/api/admin/users/{id}/revoke-oauth-tokens`，需 `auth.oauth.manage`）保留给治理场景。
+自助接口只处理本人授权。管理者按客户端或用户吊销的接口见[OAuth 客户端治理](/oauth-integration)。
 
 ## 公开账号资料
 
@@ -192,7 +177,7 @@ DELETE /api/auth/oauth-grants/{client_id}      # 需登录：撤回我对该应�
 GET /api/users/{id}   # 匿名可读：某账号的公开资料
 ```
 
-响应 `{ "user": {...}, "stats": {...} }`：
+响应 `{ "user": {...}, "stats": {...} }`。以下示例为本人已登录时的投影；查看他人或匿名读取不含 email：
 
 ```json
 {
@@ -205,14 +190,12 @@ GET /api/users/{id}   # 匿名可读：某账号的公开资料
 - `avatar_url` / `created_at` 不在这份公开资料投影里。
 - `email` 只在请求者就是本人时下发（带本人令牌或 Cookie）；匿名与看别人都缺省。
 - `banned` 与管理台 `GET /api/admin/users` 同一口径：只在为真时出现。
-- `stats.invited_count` 是「该用户邀请成功的人数」，只算真被用掉、并因此注册成功的邀请。`auth.invite_uses` 记录谁用了哪个码，码归 `auth.invites.created_by` 所有。
+- `stats.invited_count` 是该用户通过自己签发的邀请码成功邀请的人数。
 - 同一个人被同一邀请人的多个码拉进来只算一次；码之后被吊销或过期不回溯扣减，已被封禁的受邀者也计入。
 - 非 UUID 与查不到的 id 都返回 `404` + `{"error":"not_found"}`，两种情况不区分。
 - 网关把恰好一段路径的 `/api/users/{id}` 分流到账号服务；`/api/users/{id}/stats`、`/api/users/{id}/favorites` 归互动服务，`/api/users/{id}/contributions` 归目录服务（矩阵见 [API 概览](/api-overview)）。
 
-::: warning 被封禁的账号照样返回资料（带 `"banned": true`）
-封禁是访问控制（不能登录 / 续期 / 验签），不是「这个人不存在」——他的历史贡献与别人会话里的引用都还指向这个 id，回 404 会让其它服务里的链接整片失效。
-:::
+被封禁账号仍返回公开资料并带 `banned=true`，其历史贡献与引用保留。
 
 用户主页的另外两组数据各由对应服务提供：三个互动数字（主题 / 回复 / 收藏）见 [社区与互动 API](/api-community#用户主页统计)，目录侧贡献流见 [实体查询与详情](/api-entities)。
 
@@ -240,15 +223,15 @@ PUT /api/admin/users/{id}/ban     # { "banned": true }  封禁
 PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true, "user": {...} }
 ```
 
-封禁立即生效，不是「打个标记」：
+封禁影响登录、会话与第三方授权：
 
 - 登录：口令正确但账号被封禁 → `403` + `{"error":"account_banned"}`。这与口令错误的 `401 invalid_credentials` 区分，前端据此提示「账号已停用、请联系站务」，而不是引导用户反复重试密码。
 - 续期：`POST /api/auth/refresh` 同码 `account_banned`（403）。
-- 既有会话与令牌：封禁会删除该用户的服务端会话、第三方令牌与未兑换的授权码。验签路径（本地校验 JWT 通过之后）再查一次封禁状态，因此在账号服务自己的端点（`/api/auth/*`、`/api/oauth/userinfo` 等）上，手里那张未过期的访问令牌立刻失效。
+- 既有会话与令牌：封禁移除服务端会话、第三方令牌与未兑换授权码。账号服务还复核封禁状态；执行封禁的实例立即更新缓存，其他账号实例缓存最多延迟 5 秒。
 - 两条护栏：不能封自己（`cannot_ban_self`），也不能封掉最后一个还能登录的管理员（`cannot_ban_sole_admin`，已封禁的管理员不计入剩余数量）。两者都返回 `400`。
 
 ::: warning 下游服务里的旧令牌最长还能用到自然过期
-目录 / 互动 / 存储三个服务是本地 JWKS 验签、不回调账号服务，被封账号的旧令牌在它们那里最长还能用到自然过期（≤15 分钟）。这是无状态验签的既有取舍（要即时跨服务撤销需引入 introspection 或共享注销集合，当前未实现）。
+目录、互动、存储对 JWT 本地验签，被封账号的旧 JWT 最长仍可用到自然过期（默认 15 分钟）。PAT 的撤销窗口见[到期与吊销](#到期与吊销)。
 :::
 
 ## OAuth 应用接入
@@ -257,7 +240,7 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 
 ## 限流
 
-网关按来源 IP 固定窗口限流：
+网关按来源 IP 使用 Nginx `limit_req` 限流，额度和突发档以实例网关配置为准：
 
 | 网关前缀 | 限流档 |
 |---|---|
@@ -274,32 +257,20 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 - `POST /api/auth/tokens`、`DELETE /api/auth/tokens/:id`
 - `POST /api/developer/apps`、`POST /api/developer/apps/:id/rotate-secret`
 
-PAT 的内省端点（`POST /api/auth/tokens/introspect`，下游服务调用）另有自己的双维度固定窗口限流：每来源 IP 600 次/分钟、每令牌 60 次/分钟，超限 `429 rate_limited` 带 `Retry-After`。它**不读**实例设置里的认证写入限流开关——内省是读语义，为了压注册洪水关掉写入限流不该连带松开下游鉴权。
+PAT 内省端点另按来源 IP 600 次/分钟、令牌 60 次/分钟计数，超限返回 `429 rate_limited` 与 `Retry-After`，不受认证写入限流开关控制。
 
-超限返回 `429` 与 `Retry-After`；限流按 IP 与路由判定。**只有目录服务的路由级限流**会在响应里带 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`（窗口上限、窗口内剩余次数、距重置秒数，超限的 `429` 也带）；账号服务自身的限流（含 PAT 的创建与内省）与网关那一层都不发这组头。
+账号服务的认证写入接口按 IP 共用窗口；内省另有令牌维度。账号服务超限带 `Retry-After`，网关拦下的 429 可能不带，此时采用退避。窗口头 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` 只由目录路由级限流提供，见[API 概览](/api-overview#限流)。
 
 ## 用令牌调用
 
+下例使用 Bash，先将 `METAFUSION_BASE_URL` 设为目标实例根地址（例如 `https://example.com`，不带 `/api`），将 `MF_PAT` 设为已有 PAT：
+
 ```bash
-# 读（开放端点无需令牌）
-curl "/api/catalog/entities?kind=work&limit=10"
-
-# 写（需登录会话）
-curl -X POST /api/catalog/entities \
-  -H "Authorization: Bearer <session-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"entity":{"kind":"work","title":"新作品","original_language":"ja","translations":{"zh-CN":{"title":"新作品"}}},"expected_version":0,"edit_note":"initial import per official source","sources":[{"kind":"url","citation":"官网","url":"https://example.com"}]}'
-
-# 同一写入换成长期令牌（Agent / CI）：明文只在创建时看过一次，放进环境变量
-curl -X POST /api/catalog/entities \
-  -H "Authorization: Bearer $MF_PAT" \
-  -H "Content-Type: application/json" \
-  -d '{ ...同上... }'
+curl --fail-with-body "$METAFUSION_BASE_URL/api/catalog/entities?kind=work&limit=10" \
+  -H "Authorization: Bearer $MF_PAT"
 ```
 
-同一枚令牌能做什么，由创建时选择的 scopes 与账号现时权限共同决定：协作编辑与直接发布使用 `catalog.entity.edit`，合并、停用与下架另需 `catalog.lifecycle.manage`。自己的未发布草稿按账号身份维护。
-
-令牌不够权限时返回 `403 forbidden`，这与「令牌无效 / 已吊销」的 `401 invalid_token` 是两回事，别混用处理分支。
+写入载荷与版本规则统一见[新建与编辑](/api-edit)。有效令牌权限不足返回 `403 forbidden`；PAT 无效返回 `401 invalid_token`，两者分别处理。第三方 OAuth scopes 与 PAT 权限码不同，不应互换，见[OAuth 接入](/oauth-integration)。
 
 ## 相关页面
 
