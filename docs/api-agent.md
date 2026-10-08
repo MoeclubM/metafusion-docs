@@ -11,9 +11,9 @@ group: "api"
 
 ## 技能接入
 
-已安装或能获取 MetaFusion 技能时，优先按技能执行编目操作。入口为[MetaFusion 技能仓库](https://github.com/MoeclubM/metafusion-skills)，获取权限以仓库设置为准；无法访问或环境不支持技能时，可按本页和目标实例的协议直接接入。
+已安装或能获取 MetaFusion 技能时，优先按技能执行编目操作。技能入口：[MetaFusion 技能仓库](https://github.com/MoeclubM/metafusion-skills)，公开提供技能及安装说明。无法访问或环境不支持技能时，可按本页和目标实例的协议直接接入。
 
-按仓库[使用说明](https://github.com/MoeclubM/metafusion-skills/blob/main/README.md#使用)复制所需技能目录。编目技能与建模技能同级安装并保持同一仓库修订；更新时只复制版本库内容，不覆盖本机凭据或运行产物。
+按仓库[使用说明](https://github.com/MoeclubM/metafusion-skills/blob/main/README.md#使用)复制完整技能目录并保留相对路径。编目技能与建模技能同级安装并保持同一仓库修订；更新时只复制版本库内容，不覆盖本机凭据或运行产物。
 
 | 任务 | 技能 |
 | --- | --- |
