@@ -35,7 +35,8 @@ GET /api/catalog/entities?kind=medium&release_id=<release_id>
 | `release_id` | 该发行版下的载体 |
 | `medium_id` | 该载体下的曲目 |
 | `parent_id` | 同层子节点（内容单元 / 载体 / 曲目） |
-| `tags` | 多值标签过滤：重复出现或逗号分隔，命中任一即返回；服务端走 JSONB 包含匹配 |
+| `tags` | 多值标签过滤：重复出现或逗号分隔；服务端走 JSONB 包含匹配，匹配方式由 `tags_mode` 决定 |
+| `tags_mode` | `any`（默认）匹配任一已选标签；`all` 要求同时包含全部已选标签。普通列表和关键词搜索均适用，非法值返回 400 `invalid_query_param` |
 | `sort` / `order` / `locale` | sort 可取 updated_at / created_at / title，order 为 asc / desc；题名排序可指定 locale，未知排序/方向返回 invalid_sort / invalid_order |
 | `limit` / `offset` | 默认 50 / 0；limit 为 1–100，offset 为非负整数，非法值返回 400 |
 | `page` | 从 1 起，等价 offset=(page-1)×limit，不能与 offset 同时提交 |

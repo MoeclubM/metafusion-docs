@@ -2,7 +2,7 @@
 
 在线文档：<https://findverse.cc/docs/>
 
-本仓库维护 MetaFusion 的使用指南、编目规范和对外 API 参考。普通用户从「开始使用」进入，开发者与 Agent 从「API 概览」进入。
+本仓库是 MetaFusion 的用户和开发者文档，维护使用指南、编目规范和对外 API 参考。普通用户从「开始使用」进入，开发者与 Agent 从「API 概览」进入。
 
 ## 内容边界
 

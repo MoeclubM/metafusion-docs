@@ -13,7 +13,7 @@ group: "api"
 
 搜索覆盖基础题名、译名、别名、摘要、标签和外部编号，支持词项前缀与大小写不敏感的子串匹配。默认按相关度排序，题名匹配权重较高；可以显式指定 updated_at、created_at 或 title 排序。
 
-q 可以和当前列表过滤组合：kind / kinds、status、tags、original_language、has_pictures、固定归属 ID，以及 field + value 的精确属性筛选。嵌套组、列表和收录伪字段按 definitions 的搜索声明校验。完整参数见[实体查询与详情](/api-entities)。
+q 可以和当前列表过滤组合：kind / kinds、status、tags（通过 tags_mode 选择任一或全部匹配）、original_language、has_pictures、固定归属 ID，以及 field + value 的精确属性筛选。嵌套组、列表和收录伪字段按 definitions 的搜索声明校验。完整参数见[实体查询与详情](/api-entities)。
 
 q 等文本参数最多 256 字节，须为合法 UTF-8；除制表符外的控制字符会被拒绝。客户端应使用 URL 编码，不手工拼接关键词。
 
