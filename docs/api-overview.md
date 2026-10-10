@@ -80,18 +80,9 @@ MetaFusion 使用统一的 `/api` 入口。实体种类通过 `kind` 区分，�
 
 ## 限流
 
-目录重型读接口默认按「账号 + 路由」计数，匿名按「客户端 IP + 路由」计数。额度优先级为账号、用户组、全局配置、路由内置值；多组命中取最宽松规则。
+业务 API 默认按账号分别维护读、写两个窗口，各 180 次/分钟；匿名按客户端 IP 分别计数。只读 POST（关系查询、候选、checkout、提交预览等）计入读窗口。目录实例策略仍可按账号、组和全局配置覆盖默认值，多组取最宽松规则；已验证 admin 组免业务 RPM 限流，免限流不免权限校验。
 
-| 路由 | 内置默认额度 / 分钟 |
-| --- | --- |
-| 实体列表、标签、实体统计、links、批量 identity、批量表达、toc、editions、composition、贡献流、请求日志 | 120 |
-| `POST /api/catalog/relationships/query`、`GET /api/catalog/shelves/feed` | 60 |
-| `GET /api/catalog/compare`、`POST /api/importer/preview` | 10 |
-| `GET /api/notifications/unread-count` | 300 |
-
-受限路由响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（距重置的秒数）；超限为 429，并带 `Retry-After`。实例策略可覆盖默认额度，配置为不限时不发这组窗口头。管理协议见[动态定义与配置](/api-definitions)。
-
-网关另按 IP 限流；被网关拦下的 429 不带上述窗口头。计数当前在各目录进程内独立，客户端应以实际响应判断额度，并在缺少 Retry-After 时采用退避。
+受限响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（距重置的秒数）；超限返回 429 与 `Retry-After`。不限时不发窗口头。网关不再按共享出口 IP 限业务请求，避免 MCP 的多个用户相互挤占。当前计数为各服务进程内固定窗口，多副本不能提供全局共享额度。账号内省和登录失败保护见[账号协议](/api-auth#限流)，私信陌生人额度见互动协议。
 
 ## 常见错误处理
 

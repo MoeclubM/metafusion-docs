@@ -240,26 +240,13 @@ PUT /api/admin/users/{id}/ban     # { "banned": false } 解封 → { "ok": true,
 
 ## 限流
 
-网关按来源 IP 使用 Nginx `limit_req` 限流，额度和突发档以实例网关配置为准：
+账号业务 API 默认读写各 180 次/分钟，已验证账号按用户计数，匿名按 IP；admin 组免业务限流。实例设置 `auth_rate_limit_enabled` / `auth_rate_limit_per_minute` 可覆盖普通账号额度，修改后立即生效。网关不再对业务 API 叠加共享出口 IP 限流。
 
-| 网关前缀 | 限流档 |
-|---|---|
-| `/api/auth/`、`/api/setup`、`/api/oauth/`、`/api/oidc/`、`/api/.well-known/`、`/.well-known/` | `auth_limit`：`5 r/s`，`burst 10` |
-| `/api/developer/` | `auth_limit`：`5 r/s`，`burst 20` |
-| 其余 `/api/` 前缀 | `api_limit`：`30 r/s`，`burst` 视 location 为 20 / 50 / 100 |
+PAT 内省为服务间热路径，普通令牌 180 次/分钟、来源 IP 18000 次/分钟；内省确认属于当前 admin 组时免这两项限流。未验证令牌不能声称 admin 身份。登录失败保护独立生效，不能通过伪造用户组绕过。
 
-账号管理面 `/api/admin/users`、`/api/admin/groups`、`/api/admin/oauth/`、`/api/admin/settings`、`/api/admin/invites` 都是 `burst 50`。
+业务响应提供 `X-RateLimit-Limit` / `Remaining` / `Reset`，超限提供 `Retry-After`；当前计数为进程内固定窗口。
 
-账号服务另按 IP 对认证写入类接口做固定窗口限流，默认 15 次/分钟。速率与开关是实例设置 `auth_rate_limit_enabled` / `auth_rate_limit_per_minute`：`false` 时不限流，改完立即生效。受控端点：
-
-- `/api/auth/login`、`/api/auth/refresh`、`/api/auth/register`、`/api/setup`
-- `/api/oauth/authorize`、`/api/oauth/token`
-- `POST /api/auth/tokens`、`DELETE /api/auth/tokens/:id`
-- `POST /api/developer/apps`、`POST /api/developer/apps/:id/rotate-secret`
-
-PAT 内省端点另按来源 IP 600 次/分钟、令牌 60 次/分钟计数，超限返回 `429 rate_limited` 与 `Retry-After`，不受认证写入限流开关控制。
-
-账号服务的认证写入接口按 IP 共用窗口；内省另有令牌维度。账号服务超限带 `Retry-After`，网关拦下的 429 可能不带，此时采用退避。窗口头 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` 只由目录路由级限流提供，见[API 概览](/api-overview#限流)。
+受限 PAT 可调用公共账号资料与已授权的 `/api/admin/*` 管理 API，权限仍为账号现时权限与 scopes 交集，审计凭据类型为 pat。`mcp.connect` 仅用于 MCP 身份验证，不授予业务编辑或管理能力；普通非封禁站内账号可授权该身份能力。登录、口令、自助令牌和第三方 OAuth 授权仍使用浏览器会话。
 
 ## 用令牌调用
 
