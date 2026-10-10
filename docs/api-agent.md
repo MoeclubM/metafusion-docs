@@ -37,7 +37,8 @@ group: "api"
 
 | 建议工具 | HTTP 入口 | 用途 |
 | --- | --- | --- |
-| find_entities | `GET /api/catalog/entities` | 查重与筛选，分页按查询模式处理 |
+| find_entities | `GET /api/catalog/entities` | 浏览与筛选，分页按查询模式处理 |
+| find_identity_candidates | `POST /api/catalog/entities/candidates` | [一次快照查重并解析身份](/api-entities#并发编目的查重候选) |
 | get_entity | `GET /api/catalog/entities/{id}` | 获取完整实体与当前 version |
 | resolve_identity | `GET /api/catalog/entities/{id}/identity` | 解析保留身份与历史别名 |
 | query_relationships | `POST /api/catalog/relationships/query` | 读取直接关系与上下文引用 |
@@ -63,7 +64,7 @@ group: "api"
 
 ## 编目与写入计划
 
-1. 查重并核验来源，再按[目录教程](/catalog)确定层级与复用对象，用[编辑与审查规范](/editing-guide)核对事实。
+1. 用 candidates 查询查重，核对 complete、canonical 与来源；不要在并发写入时用 offset 扫全库证明没有重复。再按[目录教程](/catalog)确定层级与复用对象，用[编辑与审查规范](/editing-guide)核对事实。
 2. 为每一步保存目标、输入、证据、创建键及返回 ID；按依赖逐层提交：
 
    ```text
@@ -90,6 +91,7 @@ group: "api"
 | `idempotency_conflict` | 核对任务是否误用创建键，勿通过换键重复创建 |
 | `invalid_search_cursor` / `search_cursor_expired` / `search_window_exceeded` | 按[检索](/api-search#失败与重试)继续或重新开始，重启后对已收集 ID 去重 |
 | 429 | 尊重 Retry-After 与实际窗口头，降低并发与重复查询 |
+| candidates 的 complete=false 或 canonical=null | 收窄条件或核验未解析身份，不能盲目重试、等待低峰或据此创建 |
 | `auth_unavailable` / `search_unavailable` | 视为依赖故障并退避，不更换有效凭据、不把搜索失败当作零命中 |
 | 数据库故障或无法解释的协议差异 | 保留请求摘要和任务进度，停止依赖故障的写入，报告已完成范围 |
 

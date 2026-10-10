@@ -87,6 +87,28 @@ GET /api/catalog/entities?kind=release&field=subject_attributes.seq&value=1
 
 子字段是否可用以 `GET /api/catalog/definitions` 为准（含后台新增的子字段）。
 
+## 并发编目的查重候选
+
+`POST /api/catalog/entities/candidates` 是只读查询。在 PostgreSQL 的同一个 repeatable-read 快照中查找候选并解析保留身份；题名、别名、外部 ID 和标量属性使用随实体写入同步更新的索引。其他 Agent 修改无关条目不会使查询因全库总数变化失败。
+
+```json
+{
+  "kind": "work",
+  "titles": ["夜明け", "Dawn"],
+  "external_ids": [{"provider": "wikidata", "value": "Q123"}],
+  "attributes": [{"key": "duration", "value": "213"}],
+  "limit": 1000
+}
+```
+
+`kind` 必填，至少提供一类条件，每类最多 20 项、每个值最多 256 字节。条件之间为 OR：题名匹配基础题名、翻译题名及别名，忽略大小写并合并空白；外部 ID 和标量/标量数组属性按文本精确比较。Expression 可用 `work_id` 限定所属 Work。相同题名、时长或版次属性只能定位候选，不能确认身份。
+
+响应包含 `items`、`total`、`complete`、`basis="postgres_repeatable_read"`。每项含 `matched` 原始实体摘要和 `canonical` 保留实体摘要；不能解析时 `canonical=null` 并带 `resolution_error`。摘要不能用于实体 PUT。
+
+`total` 是该快照中命中的原始实体数；`limit` 为 1–1000，默认 1000。超过上限时 `complete=false`，应收窄过宽条件，不能把部分结果当成没有重复。查询仅覆盖调用者可见范围，排除已删除原始实体；零候选不证明不可见范围内没有重复。默认额度为每账号或客户端 IP 每分钟 120 次。
+
+创建前使用此接口查重，不用跨页扫全库，也不靠关键词搜索的异步索引证明实体不存在。候选查询不锁定后续创建；多个 Agent 仍应分配不同任务范围，已存在身份应复用，创建结果未知时保留原幂等键并先核对结果。
+
 ## 实体详情
 
 ```http
